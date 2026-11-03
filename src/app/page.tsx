@@ -203,7 +203,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-[#E7E1D8] bg-white py-6">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#78716C]">
-          <span>© {new Date().getFullYear()} ScanOrder SaaS. All rights reserved.</span>
+          <span>© 2026 ScanOrder SaaS. All rights reserved.</span>
           <div className="flex items-center gap-4">
             <Link href="/login" className="hover:text-[#29241F]">
               Sign In

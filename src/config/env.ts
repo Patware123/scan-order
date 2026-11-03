@@ -23,12 +23,16 @@ function validateEnv(): Env {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     "placeholder";
 
+  const defaultAppUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
   const parsed = envSchema.safeParse({
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    NEXT_PUBLIC_APP_URL: defaultAppUrl,
     NODE_ENV: (process.env.NODE_ENV as "development" | "test" | "production") || "development",
   });
 
@@ -39,7 +43,7 @@ function validateEnv(): Env {
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: publishableKey,
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      NEXT_PUBLIC_APP_URL: defaultAppUrl,
       NODE_ENV: (process.env.NODE_ENV as "development" | "test" | "production") || "development",
     };
   }

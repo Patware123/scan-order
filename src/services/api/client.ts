@@ -47,7 +47,7 @@ export async function apiRequest<T>(
     path.startsWith("http")
       ? path
       : typeof window === "undefined"
-      ? `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}${path}`
+      ? `${process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")}${path}`
       : path;
 
   const response = await fetch(fullUrl, {
