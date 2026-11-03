@@ -227,30 +227,37 @@ export default function ReportsPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {topItems.map((item, idx) => (
-                  <div
-                    key={item.menu_item_id}
-                    className="flex items-center justify-between text-xs py-2 border-b border-[#FAF8F4] last:border-0"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="h-5 w-5 rounded-md bg-[#F3E6D4] text-[#783F24] font-bold text-3xs flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
-                      <span className="font-semibold text-[#29241F] truncate">
-                        {item.item_name}
-                      </span>
-                    </div>
+                {topItems.map((item: any, idx) => {
+                  const dishName = item.item_name || item.itemName || `Dish #${idx + 1}`;
+                  const totalQty = item.total_quantity ?? item.totalQuantity ?? 0;
+                  const totalRev = item.total_revenue_paise ?? item.totalRevenuePaise ?? 0;
+                  const uniqueKey = item.menu_item_id || dishName || `report-dish-${idx}`;
 
-                    <div className="flex items-center gap-4 shrink-0">
-                      <span className="text-[#78716C]">
-                        {item.total_quantity} sold
-                      </span>
-                      <span className="font-bold text-[#783F24]">
-                        {formatPaiseToINR(item.total_revenue_paise)}
-                      </span>
+                  return (
+                    <div
+                      key={uniqueKey}
+                      className="flex items-center justify-between text-xs py-2 border-b border-[#FAF8F4] last:border-0"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="h-5 w-5 rounded-md bg-[#F3E6D4] text-[#783F24] font-bold text-3xs flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span className="font-semibold text-[#29241F] truncate">
+                          {dishName}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-4 shrink-0">
+                        <span className="text-[#78716C]">
+                          {totalQty} sold
+                        </span>
+                        <span className="font-bold text-[#783F24]">
+                          {formatPaiseToINR(totalRev)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

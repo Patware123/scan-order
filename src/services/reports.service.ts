@@ -107,7 +107,16 @@ export async function getTopSellingItems(
     .sort((a, b) => b.totalQuantity - a.totalQuantity)
     .slice(0, limit);
 
-  return sorted;
+  return sorted.map((s, idx) => ({
+    menu_item_id: s.itemName || `dish-${idx}`,
+    item_name: s.itemName,
+    itemName: s.itemName,
+    total_quantity: s.totalQuantity,
+    totalQuantity: s.totalQuantity,
+    total_revenue_paise: s.totalRevenuePaise,
+    totalRevenuePaise: s.totalRevenuePaise,
+    total_revenue_rupees: Math.round(s.totalRevenuePaise / 100),
+  }));
 }
 
 export async function getReportsRange(

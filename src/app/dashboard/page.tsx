@@ -334,29 +334,36 @@ export default function DashboardOverviewPage() {
                 Top selling analytics will populate as completed orders accumulate.
               </p>
             ) : (
-              topItems.map((item, idx) => (
-                <div
-                  key={item.menu_item_id}
-                  className="flex items-center justify-between gap-3 pb-2.5 border-b border-[#FAF8F4] last:border-0 last:pb-0"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="h-6 w-6 rounded-lg bg-[#FAF8F4] border border-[#E7E1D8] font-bold text-xs text-[#783F24] flex items-center justify-center shrink-0">
-                      #{idx + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-[#29241F] truncate">
-                        {item.item_name}
-                      </p>
-                      <p className="text-3xs text-[#78716C]">
-                        {item.total_quantity} sold
-                      </p>
+              topItems.map((item: any, idx) => {
+                const dishName = item.item_name || item.itemName || `Dish #${idx + 1}`;
+                const totalQty = item.total_quantity ?? item.totalQuantity ?? 0;
+                const totalRev = item.total_revenue_paise ?? item.totalRevenuePaise ?? 0;
+                const uniqueKey = item.menu_item_id || dishName || `dish-item-${idx}`;
+
+                return (
+                  <div
+                    key={uniqueKey}
+                    className="flex items-center justify-between gap-3 pb-2.5 border-b border-[#FAF8F4] last:border-0 last:pb-0"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="h-6 w-6 rounded-lg bg-[#FAF8F4] border border-[#E7E1D8] font-bold text-xs text-[#783F24] flex items-center justify-center shrink-0">
+                        #{idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-[#29241F] truncate">
+                          {dishName}
+                        </p>
+                        <p className="text-3xs text-[#78716C]">
+                          {totalQty} sold
+                        </p>
+                      </div>
                     </div>
+                    <span className="text-xs font-bold text-[#783F24] shrink-0">
+                      {formatPaiseToINR(totalRev)}
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-[#783F24] shrink-0">
-                    {formatPaiseToINR(item.total_revenue_paise)}
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

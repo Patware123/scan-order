@@ -560,7 +560,7 @@ function CreateRestaurantModal({
   };
 
   return (
-    <Dialog isOpen={isOpen} onClose={onClose} title="Create & Onboard New Restaurant" size="lg">
+    <Dialog isOpen={isOpen} onClose={onClose} title="Create & Onboard New Restaurant" size="xl">
       <form onSubmit={handleSubmit} className="space-y-5 pt-1">
         {/* Step 1: Restaurant Details */}
         <div className="space-y-3">
@@ -761,7 +761,7 @@ function CreateRestaurantModal({
           </div>
         )}
 
-        <div className="flex gap-2 justify-end pt-2 border-t border-[#E7E1D8]">
+        <div className="flex gap-2 justify-end pt-3 border-t border-[#E7E1D8] sticky bottom-0 bg-white py-2 z-10">
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>
