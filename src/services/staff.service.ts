@@ -142,11 +142,22 @@ export async function updateRestaurantStaffStatus(
 ) {
   const adminClient = createAdminClient();
 
+  // Match either membership record id OR auth user_id
+  const { data: member } = await adminClient
+    .from("restaurant_users")
+    .select("id, user_id")
+    .eq("restaurant_id", restaurantId)
+    .or(`id.eq.${targetUserId},user_id.eq.${targetUserId}`)
+    .maybeSingle();
+
+  if (!member) {
+    throw new NotFoundError("Staff membership record not found");
+  }
+
   const { data, error } = await adminClient
     .from("restaurant_users")
     .update({ is_active: isActive })
-    .eq("restaurant_id", restaurantId)
-    .eq("user_id", targetUserId)
+    .eq("id", member.id)
     .select()
     .single();
 
@@ -164,20 +175,22 @@ export async function resetRestaurantStaffPassword(
 ) {
   const adminClient = createAdminClient();
 
-  // Verify membership first
+  // Verify membership first (match either restaurant_users.id OR restaurant_users.user_id)
   const { data: member, error: memberError } = await adminClient
     .from("restaurant_users")
-    .select("id, role")
+    .select("id, user_id, role")
     .eq("restaurant_id", restaurantId)
-    .eq("user_id", targetUserId)
-    .single();
+    .or(`id.eq.${targetUserId},user_id.eq.${targetUserId}`)
+    .maybeSingle();
 
   if (memberError || !member) {
     throw new NotFoundError("Staff member not found in this restaurant");
   }
 
+  const authUserId = member.user_id;
+
   // Update password in Supabase Auth
-  const { error: authError } = await adminClient.auth.admin.updateUserById(targetUserId, {
+  const { error: authError } = await adminClient.auth.admin.updateUserById(authUserId, {
     password: newPassword,
   });
 

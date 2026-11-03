@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -16,9 +17,9 @@ import {
   X,
   ChevronDown,
   Sparkles,
-  Building2,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
+import { restaurantApi } from "@/services/api/restaurant.api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +42,15 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Branding & Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
+function getRestaurantInitials(name?: string): string {
+  if (!name || name === "Select Restaurant" || name === "Restaurant") return "R";
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -61,6 +71,31 @@ export default function DashboardLayout({
 
   const [isMobileNavOpen, setIsMobileNavOpen] = React.useState(false);
   const [isRestaurantDropdownOpen, setIsRestaurantDropdownOpen] = React.useState(false);
+  const [logoError, setLogoError] = React.useState(false);
+
+  // Fetch live restaurant branding for real-time synchronization
+  const { data: branding } = useQuery({
+    queryKey: ["branding", activeRestaurantId],
+    queryFn: () => (activeRestaurantId ? restaurantApi.getBranding(activeRestaurantId) : null),
+    enabled: !!activeRestaurantId,
+    staleTime: 60000,
+  });
+
+  const restaurantName = branding?.name || activeRestaurant?.name || "Restaurant";
+  const restaurantLogo = branding?.logo_url || activeRestaurant?.logoUrl || null;
+  const restaurantColor = branding?.primary_color || activeRestaurant?.primaryColor || "#783F24";
+
+  // Reset logo error when restaurant changes
+  React.useEffect(() => {
+    setLogoError(false);
+  }, [activeRestaurantId, restaurantLogo]);
+
+  // Set document title to restaurant's brand name so browser tab is white-labeled
+  React.useEffect(() => {
+    if (restaurantName && restaurantName !== "Restaurant") {
+      document.title = `${restaurantName} — Portal`;
+    }
+  }, [restaurantName]);
 
   // Close mobile nav on route change
   React.useEffect(() => {
@@ -109,7 +144,7 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-[#FAF8F4] flex flex-col text-[#29241F]">
-      {/* Top Navbar */}
+      {/* Top Navbar - 100% White-Labeled to Tenant Brand */}
       <header className="sticky top-0 z-40 bg-white border-b border-[#E7E1D8] shadow-2xs">
         <div className="flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
@@ -122,35 +157,79 @@ export default function DashboardLayout({
               <MenuIcon className="h-5 w-5" />
             </button>
 
-            {/* Brand Logo */}
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl bg-[#783F24] text-white flex items-center justify-center font-bold text-sm shadow-xs">
-                SO
-              </div>
-              <span className="font-bold text-base hidden sm:inline-block tracking-tight text-[#29241F]">
-                ScanOrder
-              </span>
-            </div>
-
-            {/* Restaurant Selector */}
-            {memberships.length > 0 && (
-              <div className="relative ml-2 sm:ml-4">
+            {/* Restaurant Brand Header & Outlet Switcher */}
+            <div className="relative">
+              {memberships.length > 1 ? (
                 <button
                   onClick={() => setIsRestaurantDropdownOpen(!isRestaurantDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[#E7E1D8] bg-[#FAF8F4] hover:bg-[#F3E6D4]/40 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  className="flex items-center gap-2.5 sm:gap-3 p-1 rounded-2xl hover:bg-[#FAF8F4] transition-all cursor-pointer group text-left"
                 >
-                  <Building2 className="h-3.5 w-3.5 text-[#783F24]" />
-                  <span className="max-w-[130px] sm:max-w-[180px] truncate">
-                    {activeRestaurant?.name || "Select Restaurant"}
-                  </span>
-                  {memberships.length > 1 && <ChevronDown className="h-3.5 w-3.5 text-[#78716C]" />}
-                </button>
-
-                {isRestaurantDropdownOpen && memberships.length > 1 && (
-                  <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-white border border-[#E7E1D8] shadow-lg p-1.5 z-50">
-                    <div className="px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-[#78716C]">
-                      Switch Restaurant
+                  {restaurantLogo && !logoError ? (
+                    <img
+                      src={restaurantLogo}
+                      alt={restaurantName}
+                      onError={() => setLogoError(true)}
+                      className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl object-cover border border-[#E7E1D8] shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div
+                      className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center font-black text-xs sm:text-sm text-white shadow-xs shrink-0"
+                      style={{ backgroundColor: restaurantColor }}
+                    >
+                      {getRestaurantInitials(restaurantName)}
                     </div>
+                  )}
+
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold text-sm sm:text-base tracking-tight text-[#29241F] truncate max-w-[140px] sm:max-w-[240px] md:max-w-[320px]">
+                        {restaurantName}
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 text-[#78716C] group-hover:text-[#29241F] transition-transform duration-200 shrink-0" />
+                    </div>
+                    <span className="text-3xs font-semibold uppercase tracking-wider text-[#78716C] flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      {isKitchen ? "Kitchen Station" : "Live Store"}
+                    </span>
+                  </div>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  {restaurantLogo && !logoError ? (
+                    <img
+                      src={restaurantLogo}
+                      alt={restaurantName}
+                      onError={() => setLogoError(true)}
+                      className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl object-cover border border-[#E7E1D8] shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div
+                      className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center font-black text-xs sm:text-sm text-white shadow-xs shrink-0"
+                      style={{ backgroundColor: restaurantColor }}
+                    >
+                      {getRestaurantInitials(restaurantName)}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-extrabold text-sm sm:text-base tracking-tight text-[#29241F] truncate max-w-[150px] sm:max-w-[260px] md:max-w-[340px]">
+                      {restaurantName}
+                    </span>
+                    <span className="text-3xs font-semibold uppercase tracking-wider text-[#78716C] flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      {isKitchen ? "Kitchen Station" : "Live Store"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Multi-Outlet Dropdown Menu */}
+              {isRestaurantDropdownOpen && memberships.length > 1 && (
+                <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white border border-[#E7E1D8] shadow-xl p-2 z-50">
+                  <div className="px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-[#78716C]">
+                    Switch Branch / Outlet
+                  </div>
+                  <div className="space-y-1 mt-1 max-h-60 overflow-y-auto">
                     {memberships.map((m) => (
                       <button
                         key={m.restaurantId}
@@ -159,22 +238,30 @@ export default function DashboardLayout({
                           setIsRestaurantDropdownOpen(false);
                           window.location.reload();
                         }}
-                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                           m.restaurantId === activeRestaurantId
-                            ? "bg-[#F3E6D4] text-[#783F24] font-bold"
+                            ? "bg-[#F3E6D4] text-[#783F24]"
                             : "hover:bg-[#FAF8F4] text-[#29241F]"
                         }`}
                       >
-                        <span className="truncate">{m.name}</span>
-                        <span className="text-3xs px-1.5 py-0.5 rounded-md bg-[#FAF8F4] border border-[#E7E1D8] text-[#78716C]">
+                        <div className="flex items-center gap-2 truncate">
+                          <div
+                            className="h-6 w-6 rounded-md text-white text-3xs font-bold flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: m.primaryColor || "#783F24" }}
+                          >
+                            {getRestaurantInitials(m.name)}
+                          </div>
+                          <span className="truncate">{m.name}</span>
+                        </div>
+                        <span className="text-3xs px-1.5 py-0.5 rounded-md bg-white border border-[#E7E1D8] text-[#78716C] shrink-0">
                           {m.role}
                         </span>
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Header Actions */}
@@ -209,8 +296,8 @@ export default function DashboardLayout({
       <div className="flex flex-1">
         {/* Desktop Sidebar (visible on lg+) */}
         <aside className="hidden lg:flex w-64 flex-col border-r border-[#E7E1D8] bg-white p-4 space-y-1 shrink-0">
-          <div className="px-3 py-2 text-2xs font-bold uppercase tracking-wider text-[#78716C]">
-            {isKitchen ? "Kitchen Station" : "Restaurant Management"}
+          <div className="px-3 py-2 text-2xs font-bold uppercase tracking-wider text-[#78716C] truncate">
+            {isKitchen ? "Kitchen Station" : `${restaurantName} Operations`}
           </div>
 
           <nav className="space-y-1">
@@ -238,14 +325,14 @@ export default function DashboardLayout({
           {role === "SUPER_ADMIN" && (
             <div className="pt-4 border-t border-[#FAF8F4] space-y-1">
               <div className="px-3 py-1 text-2xs font-bold uppercase tracking-wider text-[#78716C]">
-                Platform
+                Platform Control
               </div>
               <button
                 onClick={() => router.push("/admin")}
                 className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold text-[#C58B45] hover:bg-[#F3E6D4]/40 cursor-pointer"
               >
                 <Sparkles className="h-4 w-4" />
-                <span>Super Admin Portal</span>
+                <span>Admin Console</span>
               </button>
             </div>
           )}
@@ -261,13 +348,30 @@ export default function DashboardLayout({
             <div className="fixed inset-y-0 left-0 w-72 bg-white p-5 border-r border-[#E7E1D8] shadow-2xl flex flex-col justify-between">
               <div className="space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-[#FAF8F4]">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-lg bg-[#783F24] text-white flex items-center justify-center font-bold text-xs">
-                      SO
+                  <div className="flex items-center gap-2.5">
+                    {restaurantLogo && !logoError ? (
+                      <img
+                        src={restaurantLogo}
+                        alt={restaurantName}
+                        onError={() => setLogoError(true)}
+                        className="h-8 w-8 rounded-lg object-cover border border-[#E7E1D8] shadow-xs shrink-0"
+                      />
+                    ) : (
+                      <div
+                        className="h-8 w-8 rounded-lg flex items-center justify-center font-black text-xs text-white shadow-xs shrink-0"
+                        style={{ backgroundColor: restaurantColor }}
+                      >
+                        {getRestaurantInitials(restaurantName)}
+                      </div>
+                    )}
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-bold text-sm text-[#29241F] truncate max-w-[170px]">
+                        {restaurantName}
+                      </span>
+                      <span className="text-3xs font-medium text-[#78716C]">
+                        {isKitchen ? "Kitchen Display" : "Management Hub"}
+                      </span>
                     </div>
-                    <span className="font-bold text-sm text-[#29241F]">
-                      ScanOrder
-                    </span>
                   </div>
                   <button
                     onClick={() => setIsMobileNavOpen(false)}

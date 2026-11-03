@@ -58,7 +58,7 @@ export default function LoginPage() {
           <UtensilsCrossed className="h-7 w-7" />
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#29241F]">
-          ScanOrder Portal
+          Restaurant Operations Portal
         </h1>
         <p className="text-xs sm:text-sm text-[#78716C] max-w-sm mx-auto">
           Sign in to manage your restaurant orders, live kitchen display, menu, and tables.
@@ -111,7 +111,7 @@ export default function LoginPage() {
           </form>
 
           {/* Quick Demo Sign-in Helper */}
-          <div className="pt-4 border-t border-[#FAF8F4] space-y-2">
+          {/* <div className="pt-4 border-t border-[#FAF8F4] space-y-2">
             <p className="text-2xs font-semibold uppercase tracking-wider text-[#78716C] text-center">
               Quick Test Accounts (Password: Password123!)
             </p>
@@ -149,13 +149,13 @@ export default function LoginPage() {
                 <div className="text-2xs text-[#78716C] truncate">superadmin</div>
               </button>
             </div>
-          </div>
+          </div> */}
         </div>
 
-        <div className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[#78716C]">
+        {/* <div className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[#78716C]">
           <ShieldCheck className="h-4 w-4 text-[#557A52]" />
           <span>Role-Based Secure Access with Supabase Authentication</span>
-        </div>
+        </div> */}
       </div>
     </div>
   );

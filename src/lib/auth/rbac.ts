@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { UserRole } from "@/types/database.types";
+import { SUPER_ADMIN_EMAILS } from "@/config/constants";
 import { UnauthorizedError, ForbiddenError, NotFoundError } from "@/lib/utils/errors";
 
 export interface AuthenticatedUser {
@@ -32,9 +33,12 @@ export async function requireAuth(request?: NextRequest): Promise<AuthenticatedU
     if (error || !data.user) {
       throw new UnauthorizedError("Invalid or expired authorization token");
     }
+    const email = data.user.email;
+    const isSuperAdmin = Boolean(email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase()));
     return {
       id: data.user.id,
-      email: data.user.email,
+      email,
+      isSuperAdmin,
     };
   }
 
@@ -49,9 +53,13 @@ export async function requireAuth(request?: NextRequest): Promise<AuthenticatedU
     throw new UnauthorizedError("You must be signed in to perform this action");
   }
 
+  const email = user.email;
+  const isSuperAdmin = Boolean(email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase()));
+
   return {
     id: user.id,
-    email: user.email,
+    email,
+    isSuperAdmin,
   };
 }
 
@@ -71,7 +79,11 @@ export async function requireRestaurantRole(
   const adminClient = createAdminClient();
 
   // Check if user is platform Super Admin (bypass single-tenant check)
-  const isSuperAdmin = await checkIsSuperAdmin(user.id);
+  const isSuperAdmin =
+    user.isSuperAdmin ||
+    (user.email && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase())) ||
+    (await checkIsSuperAdmin(user.id));
+
   if (isSuperAdmin) {
     return {
       user: { ...user, isSuperAdmin: true },
@@ -120,6 +132,18 @@ export async function requireRestaurantRole(
  */
 export async function checkIsSuperAdmin(userId: string): Promise<boolean> {
   const adminClient = createAdminClient();
+
+  // 1. Check if email is in SUPER_ADMIN_EMAILS list
+  try {
+    const { data: authData } = await adminClient.auth.admin.getUserById(userId);
+    if (authData?.user?.email && SUPER_ADMIN_EMAILS.includes(authData.user.email.toLowerCase())) {
+      return true;
+    }
+  } catch (err) {
+    console.warn("Failed to check auth user email for super admin:", err);
+  }
+
+  // 2. Check if user has explicit SUPER_ADMIN role in restaurant_users
   const { data } = await adminClient
     .from("restaurant_users")
     .select("role")
@@ -136,7 +160,10 @@ export async function checkIsSuperAdmin(userId: string): Promise<boolean> {
  */
 export async function requireSuperAdmin(request?: NextRequest): Promise<AuthenticatedUser> {
   const user = await requireAuth(request);
-  const isSuperAdmin = await checkIsSuperAdmin(user.id);
+  const isSuperAdmin =
+    user.isSuperAdmin ||
+    (user.email && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase())) ||
+    (await checkIsSuperAdmin(user.id));
 
   if (!isSuperAdmin) {
     throw new ForbiddenError("Super Admin privileges required");

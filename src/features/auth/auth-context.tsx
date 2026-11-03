@@ -12,6 +12,8 @@ export interface RestaurantMembership {
   name: string;
   slug: string;
   role: "OWNER" | "MANAGER" | "KITCHEN" | "KITCHEN_STAFF";
+  logoUrl?: string | null;
+  primaryColor?: string | null;
 }
 
 interface AuthContextType {
@@ -63,7 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           restaurants (
             id,
             name,
-            slug
+            slug,
+            restaurant_branding (
+              logo_url,
+              primary_color
+            )
           )
         `)
         .eq("user_id", currentUser.id);
@@ -73,12 +79,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         for (const r of userRoles) {
           const rest = Array.isArray(r.restaurants) ? r.restaurants[0] : r.restaurants;
           if (rest) {
+            const branding = Array.isArray((rest as any).restaurant_branding)
+              ? (rest as any).restaurant_branding[0]
+              : (rest as any).restaurant_branding;
             mapped.push({
               restaurantId: r.restaurant_id,
               name: rest.name,
               slug: rest.slug,
               role: r.role as "OWNER" | "MANAGER" | "KITCHEN" | "KITCHEN_STAFF",
+              logoUrl: branding?.logo_url || null,
+              primaryColor: branding?.primary_color || null,
             });
+          }
+        }
+      }
+
+      const isSuper = currentUser.email && SUPER_ADMIN_EMAILS.includes(currentUser.email.toLowerCase());
+      if (isSuper) {
+        setRole("SUPER_ADMIN");
+        const { data: allRests } = await supabaseBrowser
+          .from("restaurants")
+          .select(`
+            id,
+            name,
+            slug,
+            restaurant_branding (
+              logo_url,
+              primary_color
+            )
+          `);
+
+        if (allRests && Array.isArray(allRests)) {
+          for (const rest of allRests) {
+            if (!mapped.some((m) => m.restaurantId === rest.id)) {
+              const branding = Array.isArray((rest as any).restaurant_branding)
+                ? (rest as any).restaurant_branding[0]
+                : (rest as any).restaurant_branding;
+              mapped.push({
+                restaurantId: rest.id,
+                name: rest.name,
+                slug: rest.slug,
+                role: "OWNER",
+                logoUrl: branding?.logo_url || null,
+                primaryColor: branding?.primary_color || null,
+              });
+            }
           }
         }
       }
@@ -86,7 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setMemberships(mapped);
 
       // Determine Primary Role
-      if (currentUser.email && SUPER_ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
+      if (isSuper) {
         setRole("SUPER_ADMIN");
       } else if (mapped.length > 0) {
         setRole(mapped[0].role);

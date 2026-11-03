@@ -540,7 +540,7 @@ function RestaurantDetailsContent() {
                             isLoading={toggleStaffStatusMutation.isPending}
                             onClick={() =>
                               toggleStaffStatusMutation.mutate({
-                                staffId: s.id,
+                                staffId: s.userId || s.id,
                                 isActive: !s.isActive,
                               })
                             }
@@ -865,7 +865,11 @@ function ResetPasswordModal({
 
   const mutation = useMutation({
     mutationFn: () =>
-      restaurantApi.resetStaffPassword(restaurantId, staffMember.id, newPassword),
+      restaurantApi.resetStaffPassword(
+        restaurantId,
+        staffMember.userId || staffMember.id,
+        newPassword
+      ),
     onSuccess: () => {
       onSuccess();
     },
