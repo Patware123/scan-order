@@ -22,6 +22,9 @@ import {
   Filter,
   Flame,
   ArrowRight,
+  Plus,
+  Trash2,
+  Package,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { restaurantApi, RestaurantOrder, RestaurantTable } from "@/services/api/restaurant.api";
@@ -31,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Dialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CreateOrderModal } from "@/features/orders/create-order-modal";
 
 type StatusFilter = "ALL" | "PENDING" | "ACCEPTED" | "PREPARING" | "READY" | "COMPLETED" | "UNPAID";
 type ViewMode = "ORDERS" | "TABLE_MATRIX";
@@ -71,12 +75,20 @@ export default function LiveOrdersPage() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [viewMode, setViewMode] = React.useState<ViewMode>("ORDERS");
 
+  // Create Order Modal State
+  const [isCreateOrderOpen, setIsCreateOrderOpen] = React.useState(false);
+
   // Reject Modal State
   const [rejectOrder, setRejectOrder] = React.useState<RestaurantOrder | null>(null);
   const [rejectReason, setRejectReason] = React.useState("Kitchen busy / item out of stock");
 
   // Payment Modal State
   const [settleOrder, setSettleOrder] = React.useState<RestaurantOrder | null>(null);
+
+  // Delete / Archive Modal State
+  const [deleteTarget, setDeleteTarget] = React.useState<RestaurantOrder | null>(null);
+  const [deleteReason, setDeleteReason] = React.useState("Order cancelled / table cleared");
+  const [optimisticActionError, setOptimisticActionError] = React.useState<string | null>(null);
 
   // Fetch Tables
   const { data: tables = [], isLoading: isTablesLoading } = useQuery<RestaurantTable[]>({
@@ -93,7 +105,7 @@ export default function LiveOrdersPage() {
     refetchInterval: 5000,
   });
 
-  // Status mutation
+  // Optimistic Status Mutation (Requirement 6)
   const statusMutation = useMutation({
     mutationFn: ({
       orderId,
@@ -105,21 +117,102 @@ export default function LiveOrdersPage() {
       reason?: string;
     }) =>
       restaurantApi.updateOrderStatus(activeRestaurantId!, orderId, status, reason),
-    onSuccess: () => {
+    onMutate: async ({ orderId, status }) => {
+      setOptimisticActionError(null);
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["restaurantOrders", activeRestaurantId] });
+
+      // Snapshot previous cache
+      const previousOrders = queryClient.getQueryData<RestaurantOrder[]>([
+        "restaurantOrders",
+        activeRestaurantId,
+      ]);
+
+      // Optimistically update order status in cache
+      if (previousOrders) {
+        queryClient.setQueryData<RestaurantOrder[]>(
+          ["restaurantOrders", activeRestaurantId],
+          previousOrders.map((o) =>
+            o.id === orderId
+              ? { ...o, order_status: status, updated_at: new Date().toISOString() }
+              : o
+          )
+        );
+      }
+
+      return { previousOrders };
+    },
+    onError: (err: any, _vars, context) => {
+      // Rollback to snapshot on failure
+      if (context?.previousOrders) {
+        queryClient.setQueryData(
+          ["restaurantOrders", activeRestaurantId],
+          context.previousOrders
+        );
+      }
+      setOptimisticActionError(err?.message || "Order status update failed. Changes reverted.");
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["restaurantOrders", activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurantTables", activeRestaurantId] });
       queryClient.invalidateQueries({ queryKey: ["dailyReport", activeRestaurantId] });
       setRejectOrder(null);
     },
   });
 
-  // Payment mutation
+  // Optimistic Payment Mutation (Requirement 6)
   const paymentMutation = useMutation({
     mutationFn: ({ orderId, paymentStatus }: { orderId: string; paymentStatus: "PAID" | "UNPAID" }) =>
       restaurantApi.updatePaymentStatus(activeRestaurantId!, orderId, paymentStatus),
-    onSuccess: () => {
+    onMutate: async ({ orderId, paymentStatus }) => {
+      setOptimisticActionError(null);
+      await queryClient.cancelQueries({ queryKey: ["restaurantOrders", activeRestaurantId] });
+
+      const previousOrders = queryClient.getQueryData<RestaurantOrder[]>([
+        "restaurantOrders",
+        activeRestaurantId,
+      ]);
+
+      if (previousOrders) {
+        queryClient.setQueryData<RestaurantOrder[]>(
+          ["restaurantOrders", activeRestaurantId],
+          previousOrders.map((o) =>
+            o.id === orderId ? { ...o, payment_status: paymentStatus } : o
+          )
+        );
+      }
+
+      return { previousOrders };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previousOrders) {
+        queryClient.setQueryData(
+          ["restaurantOrders", activeRestaurantId],
+          context.previousOrders
+        );
+      }
+      setOptimisticActionError(err?.message || "Payment status update failed. Changes reverted.");
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["restaurantOrders", activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurantTables", activeRestaurantId] });
       queryClient.invalidateQueries({ queryKey: ["dailyReport", activeRestaurantId] });
       setSettleOrder(null);
+    },
+  });
+
+  // Delete / Archive Mutation (Requirement 5)
+  const deleteMutation = useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: string; reason?: string }) =>
+      restaurantApi.deleteOrder(activeRestaurantId!, orderId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["restaurantOrders", activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurantTables", activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["dailyReport", activeRestaurantId] });
+      setDeleteTarget(null);
+    },
+    onError: (err: any) => {
+      setOptimisticActionError(err?.message || "Failed to delete/archive order");
     },
   });
 
@@ -263,8 +356,31 @@ export default function LiveOrdersPage() {
             <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin text-[#783F24]" : ""}`} />
             <span>Refresh</span>
           </button>
+
+          <button
+            onClick={() => setIsCreateOrderOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#783F24] text-white text-xs font-bold hover:bg-[#63331D] cursor-pointer shadow-xs transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Create Order</span>
+          </button>
         </div>
       </div>
+
+      {optimisticActionError && (
+        <div className="p-3 rounded-2xl bg-[#B94A48]/10 border border-[#B94A48]/30 text-xs text-[#B94A48] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{optimisticActionError}</span>
+          </div>
+          <button
+            onClick={() => setOptimisticActionError(null)}
+            className="text-xs font-bold underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Metrics Quick Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -728,14 +844,26 @@ export default function LiveOrdersPage() {
                             <span className="text-base font-black text-[#29241F]">
                               #{order.order_number}
                             </span>
-                            {/* Prominent Table Identifier Badge */}
-                            <span className="px-2.5 py-0.5 rounded-lg bg-[#FAF8F4] border border-[#E7E1D8] text-xs font-black text-[#783F24]">
-                              {tableLabel}
-                            </span>
+                            {/* Prominent Table or Parcel Identifier Badge */}
+                            {order.order_type === "PARCEL" ? (
+                              <span className="px-2.5 py-0.5 rounded-lg bg-[#783F24]/10 border border-[#783F24]/30 text-xs font-black text-[#783F24] flex items-center gap-1">
+                                <Package className="h-3 w-3" />
+                                Parcel
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-lg bg-[#FAF8F4] border border-[#E7E1D8] text-xs font-black text-[#783F24]">
+                                {tableLabel}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 text-2xs text-[#78716C] mt-1">
                             <Clock className="h-3 w-3" />
                             <span>{getElapsedTime(order.created_at)}</span>
+                            {order.order_source && order.order_source !== "CUSTOMER" && (
+                              <span className="text-3xs uppercase px-1 py-0.2 rounded bg-stone-100 text-[#78716C] font-semibold">
+                                via {order.order_source.toLowerCase()}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -924,6 +1052,17 @@ export default function LiveOrdersPage() {
                             <CreditCard className="h-3.5 w-3.5 text-[#557A52]" />
                           </Button>
                         )}
+
+                        {/* Delete / Archive Order Button (Requirement 5) */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title="Delete / Archive Order"
+                          onClick={() => setDeleteTarget(order)}
+                          className="px-2 text-[#78716C] hover:text-[#B94A48] hover:bg-[#B94A48]/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -1004,6 +1143,34 @@ export default function LiveOrdersPage() {
           confirmLabel="Mark as Paid"
           variant="primary"
           isLoading={paymentMutation.isPending}
+        />
+      )}
+
+      {/* Delete / Archive Order Dialog (Requirement 5) */}
+      {deleteTarget && (
+        <ConfirmationModal
+          isOpen={true}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() =>
+            deleteMutation.mutate({
+              orderId: deleteTarget.id,
+              reason: deleteReason,
+            })
+          }
+          title={`Delete / Archive Order #${deleteTarget.order_number}?`}
+          message={`Are you sure you want to delete and archive Order #${deleteTarget.order_number}? Any active table lock will be released, and financial and audit records will be securely preserved.`}
+          confirmLabel="Archive Order"
+          variant="danger"
+          isLoading={deleteMutation.isPending}
+        />
+      )}
+
+      {/* Create Order Modal (Requirement 4: Table & Parcel Orders) */}
+      {isCreateOrderOpen && (
+        <CreateOrderModal
+          isOpen={isCreateOrderOpen}
+          onClose={() => setIsCreateOrderOpen(false)}
+          restaurantId={activeRestaurantId}
         />
       )}
     </div>

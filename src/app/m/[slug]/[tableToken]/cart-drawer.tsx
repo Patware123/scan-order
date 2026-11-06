@@ -38,6 +38,33 @@ export function CartDrawer({
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
+  // Calculate breakdown of estimated charges
+  const chargesBreakdown = React.useMemo(() => {
+    const charges = menuData.charges || [];
+    let chargesTotal = 0;
+    const list = charges.map((c) => {
+      let amountPaise = 0;
+      if (c.charge_type === "PERCENTAGE") {
+        amountPaise = Math.round((totalEstimatedPaise * c.rate_or_amount) / 100);
+      } else {
+        amountPaise = Math.round(c.rate_or_amount);
+      }
+      chargesTotal += amountPaise;
+      return {
+        id: c.id,
+        name: c.name,
+        type: c.charge_type,
+        rate: c.rate_or_amount,
+        amountPaise,
+      };
+    });
+    return {
+      list,
+      chargesTotal,
+      grandTotalPaise: totalEstimatedPaise + chargesTotal,
+    };
+  }, [menuData.charges, totalEstimatedPaise]);
+
   React.useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -64,7 +91,8 @@ export function CartDrawer({
         tableToken,
         idempotencyKey,
         items: items.map((i) => ({
-          menuItemId: i.id,
+          menuItemId: i.menuItemId || i.id,
+          variantId: i.variantId,
           quantity: i.quantity,
         })),
         specialInstructions: specialNotes.trim() || undefined,
@@ -148,7 +176,7 @@ export function CartDrawer({
                         className="flex items-center justify-between gap-3 rounded-xl border border-[#E7E1D8] bg-white p-3 shadow-2xs"
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             {item.dietaryType && (
                               <span
                                 className={`h-2 w-2 rounded-full ${
@@ -161,6 +189,11 @@ export function CartDrawer({
                             <h4 className="text-sm font-medium text-[#29241F] truncate">
                               {item.name}
                             </h4>
+                            {item.variantName && (
+                              <span className="px-1.5 py-0.2 rounded text-3xs font-semibold bg-[#F3E6D4] text-[#783F24] border border-[#E7E1D8]">
+                                {item.variantName}
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-[#78716C] mt-0.5">
                             {formatPaiseToINR(item.pricePaise)} each
@@ -256,17 +289,30 @@ export function CartDrawer({
             <div className="border-t border-[#E7E1D8] bg-white p-5 space-y-4">
               <div className="space-y-1.5 text-xs sm:text-sm">
                 <div className="flex justify-between text-[#78716C]">
-                  <span>Estimated Subtotal</span>
+                  <span>Subtotal</span>
                   <span>{formatPaiseToINR(totalEstimatedPaise)}</span>
                 </div>
-                <div className="flex justify-between text-[#78716C]">
-                  <span>Taxes & Service</span>
-                  <span>Calculated on Server</span>
-                </div>
+
+                {chargesBreakdown.list.map((c) => (
+                  <div key={c.id} className="flex justify-between text-[#78716C]">
+                    <span>
+                      {c.name} {c.type === "PERCENTAGE" ? `(${c.rate}%)` : ""}
+                    </span>
+                    <span>{formatPaiseToINR(c.amountPaise)}</span>
+                  </div>
+                ))}
+
+                {chargesBreakdown.list.length === 0 && (
+                  <div className="flex justify-between text-[#78716C]">
+                    <span>Taxes & Charges</span>
+                    <span>Included / None</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between text-base font-bold text-[#29241F] pt-2 border-t border-[#E7E1D8]">
                   <span>Total Amount</span>
                   <span className="text-[#783F24]">
-                    {formatPaiseToINR(totalEstimatedPaise)}
+                    {formatPaiseToINR(chargesBreakdown.grandTotalPaise)}
                   </span>
                 </div>
               </div>

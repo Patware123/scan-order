@@ -3,10 +3,13 @@
 import * as React from "react";
 
 export interface CartItem {
-  id: string; // menuItemId
+  id: string; // Unique cart item key: `${menuItemId}:${variantId || 'base'}`
+  menuItemId: string;
   name: string;
   pricePaise: number;
   quantity: number;
+  variantId?: string;
+  variantName?: string;
   dietaryType?: string;
   specialInstructions?: string;
   imageUrl?: string;
@@ -94,14 +97,19 @@ export function CartProvider({
   };
 
   const addItem = (item: Omit<CartItem, "quantity">, quantity = 1) => {
+    const itemWithKey = {
+      ...item,
+      menuItemId: item.menuItemId || item.id,
+      id: item.variantId ? `${item.menuItemId || item.id}:${item.variantId}` : item.id,
+    };
     setItems((prev) => {
-      const existing = prev.find((i) => i.id === item.id);
+      const existing = prev.find((i) => i.id === itemWithKey.id);
       if (existing) {
         return prev.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + quantity } : i
+          i.id === itemWithKey.id ? { ...i, quantity: i.quantity + quantity } : i
         );
       }
-      return [...prev, { ...item, quantity }];
+      return [...prev, { ...itemWithKey, quantity }];
     });
   };
 

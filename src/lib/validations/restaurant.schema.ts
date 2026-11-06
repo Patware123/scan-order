@@ -45,16 +45,42 @@ export const updateRestaurantSchema = z.preprocess((val: any) => {
   logoUrl: z.string().url().optional().nullable().or(z.literal("")),
 }));
 
-export const updateBrandingSchema = z.object({
-  logoUrl: z.string().url("Invalid logo URL").optional().nullable(),
-  bannerUrl: z.string().url("Invalid banner URL").optional().nullable(),
+export const updateBrandingSchema = z.preprocess((val: any) => {
+  if (typeof val === "object" && val !== null) {
+    return {
+      ...val,
+      name: val.name,
+      phone: val.phone ?? val.supportPhone ?? val.support_phone,
+      email: val.email ?? val.supportEmail ?? val.support_email,
+      address: val.address,
+      logoUrl: val.logoUrl ?? val.logo_url ?? null,
+      bannerUrl: val.bannerUrl ?? val.banner_url ?? null,
+      primaryColor: val.primaryColor ?? val.primary_color ?? "#783F24",
+      secondaryColor: val.secondaryColor ?? val.secondary_color ?? "#FAF8F4",
+      tagline: val.tagline ?? null,
+      supportPhone: val.supportPhone ?? val.support_phone ?? val.phone ?? null,
+      supportEmail: val.supportEmail ?? val.support_email ?? val.email ?? null,
+      orderingMode: val.orderingMode ?? val.ordering_mode ?? "STAFF_SERVED",
+    };
+  }
+  return val;
+}, z.object({
+  name: z.string().trim().min(1).optional(),
+  phone: z.string().optional().nullable().or(z.literal("")),
+  email: z.string().optional().nullable().or(z.literal("")),
+  address: z.string().optional().nullable().or(z.literal("")),
+  logoUrl: z.string().optional().nullable().or(z.literal("")),
+  bannerUrl: z.string().optional().nullable().or(z.literal("")),
   primaryColor: z
     .string()
-    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Primary color must be a valid hex color code"),
+    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Primary color must be a valid hex color code")
+    .default("#783F24"),
+  secondaryColor: z.string().optional().nullable(),
   tagline: z.string().trim().max(200).optional().nullable(),
   supportPhone: z.string().trim().max(20).optional().nullable(),
-  supportEmail: z.string().email("Invalid support email").optional().nullable(),
-});
+  supportEmail: z.string().optional().nullable().or(z.literal("")),
+  orderingMode: z.enum(["SELF_SERVICE", "STAFF_SERVED"]).optional(),
+}));
 
 export const createRestaurantOnboardingSchema = z.preprocess((val: any) => {
   if (typeof val === "object" && val !== null) {

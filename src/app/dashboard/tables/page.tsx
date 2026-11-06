@@ -15,6 +15,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   ExternalLink,
+  Lock,
+  Unlock,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { restaurantApi, RestaurantTable } from "@/services/api/restaurant.api";
@@ -57,6 +61,24 @@ export default function TablesManagementPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tables", activeRestaurantId] });
       setRevokeTarget(null);
+    },
+  });
+
+  // Scanner Active toggle mutation (Requirement 3)
+  const toggleScannerMutation = useMutation({
+    mutationFn: ({ tableId, isScannerActive }: { tableId: string; isScannerActive: boolean }) =>
+      restaurantApi.toggleTableScanner(activeRestaurantId!, tableId, isScannerActive),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables", activeRestaurantId] });
+    },
+  });
+
+  // Table Lock toggle mutation (Requirement 3)
+  const toggleLockMutation = useMutation({
+    mutationFn: ({ tableId, isLocked }: { tableId: string; isLocked: boolean }) =>
+      restaurantApi.toggleTableLock(activeRestaurantId!, tableId, isLocked),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables", activeRestaurantId] });
     },
   });
 
@@ -117,20 +139,39 @@ export default function TablesManagementPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {tables.map((table) => {
-            const token = table.qr_token?.token || table.activeToken;
+            const token = table.qr_token?.token || (table as any).activeToken;
             const hasQR = Boolean(token && (!table.qr_token || !table.qr_token.is_revoked));
             const tableLabel = table.label || (table as any).table_number || "Table";
+            const isScannerActive = table.is_scanner_active !== undefined ? Boolean(table.is_scanner_active) : (table as any).isScannerActive !== false;
+            const isLocked = table.is_locked !== undefined ? Boolean(table.is_locked) : Boolean((table as any).isLocked);
+            const activeOrder = (table as any).activeOrder || (table as any).active_order;
 
             return (
               <div
                 key={table.id}
-                className="rounded-2xl border border-[#E7E1D8] bg-white p-4 shadow-xs flex flex-col justify-between space-y-4"
+                className={`rounded-2xl border bg-white p-5 shadow-xs flex flex-col justify-between space-y-4 transition-all ${
+                  isLocked
+                    ? "border-[#E7E1D8] bg-gradient-to-b from-white to-[#FAF8F4]"
+                    : "border-[#E7E1D8]"
+                }`}
               >
-                <div className="flex items-start justify-between">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1">
-                    <h3 className="text-base font-bold text-[#29241F]">
-                      {tableLabel}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-[#29241F]">
+                        {tableLabel}
+                      </h3>
+                      {isLocked ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold bg-[#B94A48]/10 text-[#B94A48] border border-[#B94A48]/20">
+                          <Lock className="h-3 w-3" /> Locked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-3xs font-bold bg-[#2E7D32]/10 text-[#2E7D32] border border-[#2E7D32]/20">
+                          <Unlock className="h-3 w-3" /> Open
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-2xs text-[#78716C]">
                       <span className="flex items-center gap-1">
                         <Users className="h-3 w-3" />
@@ -146,18 +187,123 @@ export default function TablesManagementPage() {
                   </div>
 
                   <Badge variant={hasQR ? "success" : "danger"}>
-                    {hasQR ? "QR Active" : "QR Inactive"}
+                    {hasQR ? "QR Active" : "No QR"}
                   </Badge>
                 </div>
 
-                {/* QR Token Status */}
-                <div className="rounded-xl bg-[#FAF8F4] border border-[#E7E1D8] p-3 text-xs flex items-center justify-between">
+                {/* Active Order Banner */}
+                {activeOrder ? (
+                  <div className="rounded-xl bg-[#FAF8F4] border border-[#E7E1D8] p-3 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between text-2xs">
+                      <span className="font-semibold text-[#78716C] uppercase tracking-wide">
+                        Active Order
+                      </span>
+                      <span className="font-bold text-[#783F24] bg-[#783F24]/10 px-2 py-0.5 rounded-full">
+                        {activeOrder.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between font-medium text-[#29241F]">
+                      <span>#{activeOrder.order_number}</span>
+                      <span className="font-mono font-bold">
+                        ₹{((activeOrder.total_price_paise || 0) / 100).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-[#F7F5F0]/60 border border-dashed border-[#E7E1D8] p-2.5 text-2xs text-[#78716C] flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-[#2E7D32]"></span>
+                      Ready for next guest
+                    </span>
+                    <span className="text-3xs font-medium">No active order</span>
+                  </div>
+                )}
+
+                {/* Security Controls: Scanner & Table Lock */}
+                <div className="space-y-2 pt-1 border-t border-[#FAF8F4]">
+                  <div className="text-3xs uppercase font-bold text-[#78716C] tracking-wider">
+                    Security & Ordering Controls
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {/* Scanner Toggle */}
+                    <button
+                      type="button"
+                      disabled={toggleScannerMutation.isPending}
+                      onClick={() =>
+                        toggleScannerMutation.mutate({
+                          tableId: table.id,
+                          isScannerActive: !isScannerActive,
+                        })
+                      }
+                      className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                        isScannerActive
+                          ? "border-[#2E7D32]/30 bg-[#2E7D32]/5 hover:bg-[#2E7D32]/10"
+                          : "border-[#C5832B]/30 bg-[#C5832B]/5 hover:bg-[#C5832B]/10"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1 text-2xs font-bold mb-0.5">
+                        {isScannerActive ? (
+                          <>
+                            <ShieldCheck className="h-3.5 w-3.5 text-[#2E7D32]" />
+                            <span className="text-[#2E7D32]">Scanner ON</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldAlert className="h-3.5 w-3.5 text-[#C5832B]" />
+                            <span className="text-[#C5832B]">Scanner OFF</span>
+                          </>
+                        )}
+                      </div>
+                      <span className="text-3xs text-[#78716C]">
+                        {isScannerActive ? "Accepting orders" : "Scanning disabled"}
+                      </span>
+                    </button>
+
+                    {/* Table Lock Toggle */}
+                    <button
+                      type="button"
+                      disabled={toggleLockMutation.isPending}
+                      onClick={() =>
+                        toggleLockMutation.mutate({
+                          tableId: table.id,
+                          isLocked: !isLocked,
+                        })
+                      }
+                      className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                        isLocked
+                          ? "border-[#B94A48]/30 bg-[#B94A48]/5 hover:bg-[#B94A48]/10"
+                          : "border-[#E7E1D8] bg-[#FAF8F4] hover:bg-[#E7E1D8]/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1 text-2xs font-bold mb-0.5">
+                        {isLocked ? (
+                          <>
+                            <Lock className="h-3.5 w-3.5 text-[#B94A48]" />
+                            <span className="text-[#B94A48]">Table Locked</span>
+                          </>
+                        ) : (
+                          <>
+                            <Unlock className="h-3.5 w-3.5 text-[#78716C]" />
+                            <span className="text-[#29241F]">Table Unlocked</span>
+                          </>
+                        )}
+                      </div>
+                      <span className="text-3xs text-[#78716C]">
+                        {isLocked ? "Blocks new cart" : "Allows new cart"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* QR Token Status & Print */}
+                <div className="rounded-xl bg-[#FAF8F4] border border-[#E7E1D8] p-2.5 text-xs flex items-center justify-between">
                   <div className="min-w-0 pr-2">
                     <span className="text-3xs uppercase font-bold text-[#78716C] block">
-                      Active Token
+                      QR Token
                     </span>
                     <span className="font-mono text-2xs text-[#29241F] truncate block">
-                      {token || "No Token Assigned"}
+                      {token ? `${token.slice(0, 14)}...` : "None"}
                     </span>
                   </div>
 
@@ -169,7 +315,7 @@ export default function TablesManagementPage() {
                       onClick={() => setViewQRTable({ ...table, label: tableLabel, activeToken: token })}
                     >
                       <QrCode className="h-3.5 w-3.5 mr-1" />
-                      <span>View & Print</span>
+                      <span>Print QR</span>
                     </Button>
                   )}
                 </div>

@@ -9,6 +9,25 @@ export interface PublicMenuCategory {
   sort_order?: number;
 }
 
+export interface MenuItemVariantOption {
+  id: string;
+  menu_item_id: string;
+  name: string;
+  price_paise: number;
+  is_available: boolean;
+  sort_order?: number;
+}
+
+export interface RestaurantChargeOption {
+  id: string;
+  name: string;
+  charge_type: "PERCENTAGE" | "FIXED";
+  rate_or_amount: number;
+  applies_to: "ALL" | "DINE_IN" | "PARCEL";
+  is_active: boolean;
+  sort_order?: number;
+}
+
 export interface PublicMenuItem {
   id: string;
   name: string;
@@ -21,6 +40,7 @@ export interface PublicMenuItem {
   is_available: boolean;
   spice_level?: number;
   preparation_time_minutes?: number;
+  variants?: MenuItemVariantOption[];
 }
 
 export interface PublicMenuResponse {
@@ -49,9 +69,12 @@ export interface PublicMenuResponse {
     label?: string;
     capacity?: number;
     ordering_mode?: "SELF_SERVICE" | "STAFF_SERVED";
+    isScannerActive?: boolean;
+    isLocked?: boolean;
   };
   categories: PublicMenuCategory[];
   items: PublicMenuItem[];
+  charges?: RestaurantChargeOption[];
 }
 
 export interface PublicOrderStatusResponse {
