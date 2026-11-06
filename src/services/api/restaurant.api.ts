@@ -280,6 +280,31 @@ export const restaurantApi = {
       method: "DELETE",
     }),
 
+  // Taxes & GST Configuration
+  getTaxConfig: (restaurantId: string) =>
+    apiRequest<{
+      isGstEnabled: boolean;
+      gstPercentage: number;
+      gstNumber: string | null;
+    }>(`/api/restaurant/${restaurantId}/tax-config`),
+
+  updateTaxConfig: (
+    restaurantId: string,
+    payload: {
+      isGstEnabled: boolean;
+      gstPercentage: number;
+      gstNumber?: string | null;
+    }
+  ) =>
+    apiRequest<{
+      isGstEnabled: boolean;
+      gstPercentage: number;
+      gstNumber: string | null;
+    }>(`/api/restaurant/${restaurantId}/tax-config`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
   // Inventory Management
   getInventory: (restaurantId: string) =>
     apiRequest<Array<{

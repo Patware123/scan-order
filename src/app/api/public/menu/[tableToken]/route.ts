@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { resolveTableFromToken } from "@/lib/auth/rbac";
 import { getCategories, getMenuItems } from "@/services/menu.service";
 import { getRestaurantById } from "@/services/restaurant.service";
-import { getRestaurantCharges } from "@/services/charges.service";
+import { getRestaurantCharges, getRestaurantTaxConfig } from "@/services/charges.service";
 import { successResponse } from "@/lib/utils/api-response";
 import { handleApiError } from "@/lib/utils/errors";
 
@@ -14,12 +14,18 @@ export async function GET(
     const { tableToken } = await params;
     const tableInfo = await resolveTableFromToken(tableToken);
 
-    const [restaurant, categories, items, charges] = await Promise.all([
+    const [restaurant, categories, items, charges, taxConfig] = await Promise.all([
       getRestaurantById(tableInfo.restaurantId),
       getCategories(tableInfo.restaurantId, false),
       getMenuItems(tableInfo.restaurantId, { isAvailable: true }),
       getRestaurantCharges(tableInfo.restaurantId, { activeOnly: true, appliesTo: "DINE_IN" }),
+      getRestaurantTaxConfig(tableInfo.restaurantId),
     ]);
+
+    // Non-tax additional charges (GST is provided in taxConfig)
+    const nonTaxCharges = (charges || []).filter(
+      (c) => !c.name.toLowerCase().includes("gst")
+    );
 
     return successResponse({
       table: {
@@ -37,7 +43,8 @@ export async function GET(
       },
       categories,
       items,
-      charges: charges || [],
+      charges: nonTaxCharges,
+      taxConfig,
     });
   } catch (error) {
     return handleApiError(error);

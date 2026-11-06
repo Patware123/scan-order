@@ -75,6 +75,11 @@ export interface PublicMenuResponse {
   categories: PublicMenuCategory[];
   items: PublicMenuItem[];
   charges?: RestaurantChargeOption[];
+  taxConfig?: {
+    isGstEnabled: boolean;
+    gstPercentage: number;
+    gstNumber?: string | null;
+  };
 }
 
 export interface PublicOrderStatusResponse {

@@ -38,9 +38,19 @@ export function CartDrawer({
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
-  // Calculate breakdown of estimated charges
+  // Taxes (GST) calculation based on Owner configuration
+  const isGstEnabled = Boolean(menuData.taxConfig?.isGstEnabled);
+  const gstRate = isGstEnabled ? Number(menuData.taxConfig?.gstPercentage || 0) : 0;
+  const taxPaise =
+    isGstEnabled && gstRate > 0
+      ? Math.round((totalEstimatedPaise * gstRate) / 100)
+      : 0;
+
+  // Calculate breakdown of estimated charges (excluding GST to avoid double-calculation)
   const chargesBreakdown = React.useMemo(() => {
-    const charges = menuData.charges || [];
+    const charges = (menuData.charges || []).filter(
+      (c) => !c.name.toLowerCase().includes("gst")
+    );
     let chargesTotal = 0;
     const list = charges.map((c) => {
       let amountPaise = 0;
@@ -61,9 +71,9 @@ export function CartDrawer({
     return {
       list,
       chargesTotal,
-      grandTotalPaise: totalEstimatedPaise + chargesTotal,
+      grandTotalPaise: totalEstimatedPaise + taxPaise + chargesTotal,
     };
-  }, [menuData.charges, totalEstimatedPaise]);
+  }, [menuData.charges, totalEstimatedPaise, taxPaise]);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -292,6 +302,15 @@ export function CartDrawer({
                   <span>{formatPaiseToINR(totalEstimatedPaise)}</span>
                 </div>
 
+                {/* Taxes (GST): Only shown if configured by Restaurant Owner */}
+                {taxPaise > 0 && isGstEnabled && gstRate > 0 && (
+                  <div className="flex justify-between text-[#78716C]">
+                    <span>Taxes (GST {gstRate}%)</span>
+                    <span>{formatPaiseToINR(taxPaise)}</span>
+                  </div>
+                )}
+
+                {/* Non-Tax Additional Charges (e.g. Packaging, Delivery) */}
                 {chargesBreakdown.list.map((c) => (
                   <div key={c.id} className="flex justify-between text-[#78716C]">
                     <span>
@@ -300,13 +319,6 @@ export function CartDrawer({
                     <span>{formatPaiseToINR(c.amountPaise)}</span>
                   </div>
                 ))}
-
-                {chargesBreakdown.list.length === 0 && (
-                  <div className="flex justify-between text-[#78716C]">
-                    <span>Taxes & Charges</span>
-                    <span>Included / None</span>
-                  </div>
-                )}
 
                 <div className="flex justify-between text-base font-bold text-[#29241F] pt-2 border-t border-[#E7E1D8]">
                   <span>Total Amount</span>

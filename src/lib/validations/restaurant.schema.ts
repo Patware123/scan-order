@@ -18,9 +18,13 @@ export const updateRestaurantSchema = z.preprocess((val: any) => {
   if (typeof val === "object" && val !== null) {
     return {
       ...val,
+      isActive: val.isActive ?? val.is_active,
+      is_active: val.is_active ?? val.isActive,
       contactEmail: val.contactEmail ?? val.email,
       contactPhone: val.contactPhone ?? val.phone,
       logoUrl: val.logoUrl ?? val.logo_url,
+      gstNumber: val.gstNumber ?? val.gst_number,
+      fssaiLicense: val.fssaiLicense ?? val.fssai_license,
     };
   }
   return val;
@@ -34,6 +38,7 @@ export const updateRestaurantSchema = z.preprocess((val: any) => {
     .regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase alphanumeric characters and hyphens")
     .optional(),
   isActive: z.boolean().optional(),
+  is_active: z.boolean().optional(),
   currency: z.string().length(3).optional(),
   gstNumber: z.string().trim().max(20).optional().nullable(),
   fssaiLicense: z.string().trim().max(20).optional().nullable(),

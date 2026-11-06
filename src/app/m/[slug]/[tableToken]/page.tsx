@@ -145,7 +145,7 @@ function MenuContent({
 
   const tableLabel =
     menuData.table.label ||
-    (menuData.table.tableNumber ? `Table ${menuData.table.tableNumber}` : "Table");
+    (menuData.table.tableNumber ? `${menuData.table.tableNumber}` : "Table");
 
   const logoUrl =
     menuData.restaurant.branding?.logo_url || menuData.restaurant.logo_url;
@@ -243,15 +243,15 @@ function MenuContent({
                 <Badge variant="primary" className="text-2xs py-0 px-2">
                   {tableLabel}
                 </Badge>
-                <span className="text-2xs text-[#78716C]">
+                {/* <span className="text-2xs text-[#78716C]">
                   {orderingMode === "SELF_SERVICE"
                     ? "Counter Pickup"
                     : "Table Service"}
-                </span>
+                </span> */}
                 {hasVegItems && !hasNonVegItems && (
                   <span className="px-2 py-0.5 rounded-md bg-[#557A52]/10 text-[#557A52] border border-[#557A52]/20 text-3xs font-bold flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#557A52]" />
-                    Pure Veg
+                    Veg
                   </span>
                 )}
               </div>
@@ -338,32 +338,29 @@ function MenuContent({
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
             <button
               onClick={() => setDietaryFilter("ALL")}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
-                dietaryFilter === "ALL"
-                  ? "bg-[#783F24] text-white border-[#783F24]"
-                  : "bg-white text-[#78716C] border-[#E7E1D8] hover:bg-[#FAF8F4]"
-              }`}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${dietaryFilter === "ALL"
+                ? "bg-[#783F24] text-white border-[#783F24]"
+                : "bg-white text-[#78716C] border-[#E7E1D8] hover:bg-[#FAF8F4]"
+                }`}
             >
               All Items
             </button>
             <button
               onClick={() => setDietaryFilter(dietaryFilter === "VEG" ? "ALL" : "VEG")}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${
-                dietaryFilter === "VEG"
-                  ? "bg-[#557A52] text-white border-[#557A52]"
-                  : "bg-white text-[#557A52] border-[#E7E1D8] hover:bg-[#FAF8F4]"
-              }`}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${dietaryFilter === "VEG"
+                ? "bg-[#557A52] text-white border-[#557A52]"
+                : "bg-white text-[#557A52] border-[#E7E1D8] hover:bg-[#FAF8F4]"
+                }`}
             >
               <span className="h-2 w-2 rounded-full bg-[#557A52]" />
               Veg Only
             </button>
             <button
               onClick={() => setDietaryFilter(dietaryFilter === "NON_VEG" ? "ALL" : "NON_VEG")}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${
-                dietaryFilter === "NON_VEG"
-                  ? "bg-[#B94A48] text-white border-[#B94A48]"
-                  : "bg-white text-[#B94A48] border-[#E7E1D8] hover:bg-[#FAF8F4]"
-              }`}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${dietaryFilter === "NON_VEG"
+                ? "bg-[#B94A48] text-white border-[#B94A48]"
+                : "bg-white text-[#B94A48] border-[#E7E1D8] hover:bg-[#FAF8F4]"
+                }`}
             >
               <span className="h-2 w-2 rounded-full bg-[#B94A48]" />
               Non-Veg
@@ -375,11 +372,10 @@ function MenuContent({
         <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#E7E1D8] no-scrollbar">
           <button
             onClick={() => setSelectedCategory("ALL")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              selectedCategory === "ALL"
-                ? "bg-[#F3E6D4] text-[#783F24]"
-                : "text-[#78716C] hover:text-[#29241F]"
-            }`}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${selectedCategory === "ALL"
+              ? "bg-[#F3E6D4] text-[#783F24]"
+              : "text-[#78716C] hover:text-[#29241F]"
+              }`}
           >
             All Categories
           </button>
@@ -387,11 +383,10 @@ function MenuContent({
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                selectedCategory === cat.id
-                  ? "bg-[#F3E6D4] text-[#783F24]"
-                  : "text-[#78716C] hover:text-[#29241F]"
-              }`}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${selectedCategory === cat.id
+                ? "bg-[#F3E6D4] text-[#783F24]"
+                : "text-[#78716C] hover:text-[#29241F]"
+                }`}
             >
               {cat.name}
             </button>
@@ -446,16 +441,14 @@ function MenuContent({
                           {/* Dietary Badge Pill Overlay */}
                           <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-black/5 shadow-xs">
                             <span
-                              className={`h-2.5 w-2.5 rounded-xs flex items-center justify-center border ${
-                                isVeg
-                                  ? "border-[#557A52] text-[#557A52]"
-                                  : "border-[#B94A48] text-[#B94A48]"
-                              }`}
+                              className={`h-2.5 w-2.5 rounded-xs flex items-center justify-center border ${isVeg
+                                ? "border-[#557A52] text-[#557A52]"
+                                : "border-[#B94A48] text-[#B94A48]"
+                                }`}
                             >
                               <span
-                                className={`h-1.5 w-1.5 rounded-full ${
-                                  isVeg ? "bg-[#557A52]" : "bg-[#B94A48]"
-                                }`}
+                                className={`h-1.5 w-1.5 rounded-full ${isVeg ? "bg-[#557A52]" : "bg-[#B94A48]"
+                                  }`}
                               />
                             </span>
                             <span className="text-3xs font-bold uppercase tracking-wider text-[#29241F]">
@@ -508,8 +501,8 @@ function MenuContent({
                               <span className="text-base sm:text-lg font-bold text-[#783F24]">
                                 {item.variants && item.variants.length > 0
                                   ? `From ${formatPaiseToINR(
-                                      Math.min(...item.variants.map((v) => v.price_paise))
-                                    )}`
+                                    Math.min(...item.variants.map((v) => v.price_paise))
+                                  )}`
                                   : formatPaiseToINR(item.price_paise)}
                               </span>
                               {item.variants && item.variants.length > 0 && (
@@ -600,16 +593,14 @@ function MenuContent({
                         {/* Dietary & Spice badges */}
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span
-                            className={`h-2.5 w-2.5 rounded-xs flex items-center justify-center border ${
-                              isVeg
-                                ? "border-[#557A52] text-[#557A52]"
-                                : "border-[#B94A48] text-[#B94A48]"
-                            }`}
+                            className={`h-2.5 w-2.5 rounded-xs flex items-center justify-center border ${isVeg
+                              ? "border-[#557A52] text-[#557A52]"
+                              : "border-[#B94A48] text-[#B94A48]"
+                              }`}
                           >
                             <span
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                isVeg ? "bg-[#557A52]" : "bg-[#B94A48]"
-                              }`}
+                              className={`h-1.5 w-1.5 rounded-full ${isVeg ? "bg-[#557A52]" : "bg-[#B94A48]"
+                                }`}
                             />
                           </span>
 
@@ -645,8 +636,8 @@ function MenuContent({
                           <span className="text-base font-bold text-[#783F24]">
                             {item.variants && item.variants.length > 0
                               ? `From ${formatPaiseToINR(
-                                  Math.min(...item.variants.map((v) => v.price_paise))
-                                )}`
+                                Math.min(...item.variants.map((v) => v.price_paise))
+                              )}`
                               : formatPaiseToINR(item.price_paise)}
                           </span>
                           {item.variants && item.variants.length > 0 && (
@@ -839,19 +830,17 @@ function VariantSelectModal({
               <label
                 key={v.id}
                 onClick={() => setSelectedVariantId(v.id)}
-                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-colors ${
-                  isSelected
-                    ? "border-[#783F24] bg-[#F3E6D4]/30"
-                    : "border-[#E7E1D8] bg-white hover:bg-[#FAF8F4]"
-                }`}
+                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-colors ${isSelected
+                  ? "border-[#783F24] bg-[#F3E6D4]/30"
+                  : "border-[#E7E1D8] bg-white hover:bg-[#FAF8F4]"
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <span
-                    className={`h-4 w-4 rounded-full border flex items-center justify-center ${
-                      isSelected
-                        ? "border-[#783F24] bg-[#783F24]"
-                        : "border-[#A8A29E] bg-white"
-                    }`}
+                    className={`h-4 w-4 rounded-full border flex items-center justify-center ${isSelected
+                      ? "border-[#783F24] bg-[#783F24]"
+                      : "border-[#A8A29E] bg-white"
+                      }`}
                   >
                     {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
                   </span>

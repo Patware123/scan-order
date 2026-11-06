@@ -304,24 +304,259 @@ export default function RestaurantSettingsPage() {
         </div>
       </form>
 
-      {/* Taxes & Additional Charges Section */}
+      {/* Taxes (GST) Configuration Section */}
+      <GstTaxConfigurationSection restaurantId={activeRestaurantId} />
+
+      {/* Other Additional Charges Section */}
       <TaxesAndChargesSection restaurantId={activeRestaurantId} />
     </div>
   );
 }
 
 // -------------------------------------------------------------------
-// Taxes & Additional Charges Component
+// Taxes (GST) Configuration Component
+// -------------------------------------------------------------------
+function GstTaxConfigurationSection({ restaurantId }: { restaurantId: string }) {
+  const queryClient = useQueryClient();
+  const [isGstEnabled, setIsGstEnabled] = React.useState(false);
+  const [gstPercentage, setGstPercentage] = React.useState<string>("5");
+  const [gstNumber, setGstNumber] = React.useState<string>("");
+  const [successMsg, setSuccessMsg] = React.useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  // Fetch current tax config
+  const { data: taxConfig, isLoading } = useQuery({
+    queryKey: ["restaurantTaxConfig", restaurantId],
+    queryFn: () => restaurantApi.getTaxConfig(restaurantId),
+    enabled: !!restaurantId,
+  });
+
+  React.useEffect(() => {
+    if (taxConfig) {
+      setIsGstEnabled(taxConfig.isGstEnabled);
+      setGstPercentage(
+        taxConfig.gstPercentage !== undefined && taxConfig.gstPercentage !== null
+          ? String(taxConfig.gstPercentage)
+          : "5"
+      );
+      setGstNumber(taxConfig.gstNumber || "");
+    }
+  }, [taxConfig]);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const pct = parseFloat(gstPercentage);
+      if (isGstEnabled && (isNaN(pct) || pct < 0 || pct > 100)) {
+        throw new Error("Please enter a valid GST percentage between 0% and 100%.");
+      }
+      return restaurantApi.updateTaxConfig(restaurantId, {
+        isGstEnabled,
+        gstPercentage: isGstEnabled ? pct : 0,
+        gstNumber: gstNumber.trim() || null,
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["restaurantTaxConfig", restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["charges", restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurantCharges", restaurantId] });
+      setSuccessMsg(
+        data.isGstEnabled
+          ? `Taxes (GST ${data.gstPercentage}%) configured and enabled successfully!`
+          : "Taxes (GST) disabled. No taxes will be displayed to customers."
+      );
+      setErrorMsg(null);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    },
+    onError: (err: any) => {
+      setErrorMsg(err.message || "Failed to update tax configuration.");
+      setSuccessMsg(null);
+    },
+  });
+
+  const handlePresetClick = (pct: number) => {
+    setGstPercentage(String(pct));
+    if (!isGstEnabled) {
+      setIsGstEnabled(true);
+    }
+  };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.mutate();
+  };
+
+  return (
+    <div className="max-w-3xl rounded-2xl border border-[#E7E1D8] bg-white p-5 sm:p-6 shadow-xs space-y-4">
+      <div className="flex items-center justify-between border-b border-[#FAF8F4] pb-3">
+        <div className="flex items-center gap-2">
+          <Percent className="h-4 w-4 text-[#783F24]" />
+          <div>
+            <h2 className="text-sm font-bold text-[#29241F]">
+              Taxes (GST) Configuration
+            </h2>
+            <p className="text-2xs text-[#78716C]">
+              Configure your restaurant GST percentage. If disabled or not set, taxes are hidden on customer bills.
+            </p>
+          </div>
+        </div>
+
+        <span
+          className={`px-2.5 py-1 rounded-lg text-2xs font-bold border ${
+            isGstEnabled && parseFloat(gstPercentage) > 0
+              ? "bg-[#2E7D32]/10 text-[#2E7D32] border-[#2E7D32]/30"
+              : "bg-[#78716C]/10 text-[#78716C] border-[#78716C]/30"
+          }`}
+        >
+          {isGstEnabled && parseFloat(gstPercentage) > 0
+            ? `Active (${gstPercentage}% GST)`
+            : "Tax Not Applied"}
+        </span>
+      </div>
+
+      {isLoading ? (
+        <Skeleton className="h-28 w-full rounded-xl" />
+      ) : (
+        <form onSubmit={handleSave} className="space-y-4">
+          {/* Enable / Disable GST Toggle */}
+          <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#E7E1D8] bg-[#FAF8F4]/50">
+            <div>
+              <span className="text-xs font-bold text-[#29241F] block">
+                Enable Taxes (GST)
+              </span>
+              <p className="text-2xs text-[#78716C] mt-0.5">
+                Calculate GST at checkout. When turned off, menu prices are final and no tax line is shown.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsGstEnabled(!isGstEnabled)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isGstEnabled ? "bg-[#783F24]" : "bg-[#D6D3D1]"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  isGstEnabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          {isGstEnabled && (
+            <div className="space-y-4 pt-1">
+              {/* Presets and Custom Percentage */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-[#29241F]">
+                  GST Percentage Rate (%)
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[5, 12, 18].map((rate) => (
+                    <button
+                      key={rate}
+                      type="button"
+                      onClick={() => handlePresetClick(rate)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        parseFloat(gstPercentage) === rate
+                          ? "border-[#783F24] bg-[#F3E6D4]/50 text-[#783F24] ring-1 ring-[#783F24]"
+                          : "border-[#E7E1D8] bg-white text-[#78716C] hover:bg-[#FAF8F4]"
+                      }`}
+                    >
+                      {rate}% {rate === 5 ? "(Standard Food & Beverage)" : ""}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <Input
+                    label="Custom Tax Percentage (%)"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    required
+                    value={gstPercentage}
+                    onChange={(e) => setGstPercentage(e.target.value)}
+                    placeholder="e.g. 5"
+                    helperText="Applied to order subtotal"
+                  />
+
+                  <Input
+                    label="GSTIN / Tax ID (Optional)"
+                    placeholder="e.g. 27AAAAA0000A1Z5"
+                    value={gstNumber}
+                    onChange={(e) => setGstNumber(e.target.value)}
+                    helperText="Printed on digital receipt and tax invoice"
+                  />
+                </div>
+              </div>
+
+              {/* Status Explanation Box */}
+              <div className="rounded-xl border border-[#557A52]/20 bg-[#557A52]/5 p-3 text-2xs text-[#557A52]">
+                <p className="font-semibold">
+                  Taxes will be calculated at checkout as &ldquo;Taxes (GST {gstPercentage || "0"}%)&rdquo;.
+                </p>
+                <p className="text-[#78716C] mt-0.5">
+                  Customers will see this tax breakdown before placing orders and on order tracking invoices.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!isGstEnabled && (
+            <div className="rounded-xl border border-[#E7E1D8] bg-[#FAF8F4] p-3 text-2xs text-[#78716C]">
+              <span className="font-semibold text-[#29241F]">Taxes are currently disabled.</span>{" "}
+              Menu item prices will be treated as final (inclusive). The &ldquo;Taxes (GST)&rdquo; line will be completely hidden from customer carts and receipts.
+            </div>
+          )}
+
+          {/* Feedback Messages */}
+          {successMsg && (
+            <div className="rounded-xl border border-[#557A52]/30 bg-[#557A52]/10 p-3 text-xs text-[#557A52] flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="rounded-xl border border-[#B94A48]/30 bg-[#B94A48]/10 p-3 text-xs text-[#B94A48]">
+              {errorMsg}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-1">
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={mutation.isPending}
+              className="px-6"
+            >
+              Save GST Settings
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------
+// Additional Charges Component (Packaging, Delivery, etc.)
 // -------------------------------------------------------------------
 function TaxesAndChargesSection({ restaurantId }: { restaurantId: string }) {
   const queryClient = useQueryClient();
   const [isAddOpen, setIsAddOpen] = React.useState(false);
 
-  const { data: charges, isLoading } = useQuery({
+  const { data: rawCharges, isLoading } = useQuery({
     queryKey: ["charges", restaurantId],
     queryFn: () => restaurantApi.getCharges(restaurantId),
     enabled: !!restaurantId,
   });
+
+  // Filter out any charges named GST since GST has its own dedicated configuration above
+  const charges = React.useMemo(() => {
+    return (rawCharges || []).filter((c) => !c.name.toLowerCase().includes("gst"));
+  }, [rawCharges]);
 
   const toggleMutation = useMutation({
     mutationFn: ({ chargeId, isActive }: { chargeId: string; isActive: boolean }) =>
@@ -346,10 +581,10 @@ function TaxesAndChargesSection({ restaurantId }: { restaurantId: string }) {
           <Receipt className="h-4 w-4 text-[#783F24]" />
           <div>
             <h2 className="text-sm font-bold text-[#29241F]">
-              Taxes & Additional Charges
+              Additional Restaurant Charges
             </h2>
             <p className="text-2xs text-[#78716C]">
-              Configure GST, service charges, and packaging fees applied to customer orders.
+              Configure optional non-tax fees like packaging fees, parcel charges, or delivery fees.
             </p>
           </div>
         </div>
@@ -371,10 +606,10 @@ function TaxesAndChargesSection({ restaurantId }: { restaurantId: string }) {
           <Receipt className="h-6 w-6 text-[#783F24] mx-auto opacity-70" />
           <p className="font-medium text-[#29241F]">No Additional Charges Configured</p>
           <p className="text-2xs">
-            Prices on menu are final. Add taxes (e.g. 5% GST) or packaging fees if needed.
+            Add packaging fees for takeaway or custom service charges if needed.
           </p>
           <Button size="sm" variant="outline" onClick={() => setIsAddOpen(true)}>
-            Add 5% GST / Tax
+            Add Custom Charge
           </Button>
         </div>
       ) : (

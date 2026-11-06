@@ -20,7 +20,7 @@ import {
   ConflictError,
   ForbiddenError,
 } from "@/lib/utils/errors";
-import { calculateOrderCharges } from "@/services/charges.service";
+import { calculateOrderCharges, getRestaurantTaxConfig } from "@/services/charges.service";
 import { deductInventoryForOrder } from "@/services/inventory.service";
 import crypto from "crypto";
 
@@ -223,7 +223,6 @@ async function executeOrderCreationPipeline({
   }
 
   let subtotalPaise = 0;
-  let taxPaise = 0;
   const calculatedItems: {
     menuItemId: string;
     variantId: string | null;
@@ -259,10 +258,7 @@ async function executeOrderCreationPipeline({
     }
 
     const lineTotalPaise = unitPricePaise * item.quantity;
-    const itemTax = Math.round((lineTotalPaise * Number(menuItem.tax_rate_percentage || 0)) / 100);
-
     subtotalPaise += lineTotalPaise;
-    taxPaise += itemTax;
 
     calculatedItems.push({
       menuItemId: menuItem.id,
@@ -275,7 +271,13 @@ async function executeOrderCreationPipeline({
     });
   }
 
-  // C. Calculate Additional Owner-Configured Charges (Requirement 9)
+  // C. Calculate Taxes (GST) based on Owner Configuration
+  // If owner has NOT configured GST or disabled it, tax is strictly 0 and not charged
+  const taxConfig = await getRestaurantTaxConfig(restaurantId);
+  const gstRate = taxConfig.isGstEnabled ? Number(taxConfig.gstPercentage || 0) : 0;
+  const taxPaise = gstRate > 0 ? Math.round((subtotalPaise * gstRate) / 100) : 0;
+
+  // D. Calculate Additional Owner-Configured Charges (Excludes GST to prevent double charging)
   const { additionalChargesPaise, chargesBreakdown } = await calculateOrderCharges(
     restaurantId,
     subtotalPaise,

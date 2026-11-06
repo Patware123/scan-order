@@ -26,5 +26,16 @@ function preprocessCharge(val: any) {
 export const restaurantChargeSchema = z.preprocess(preprocessCharge, baseChargeObject);
 export const updateRestaurantChargeSchema = z.preprocess(preprocessCharge, baseChargeObject.partial());
 
+export const taxConfigSchema = z.object({
+  isGstEnabled: z.boolean().default(false),
+  gstPercentage: z.coerce
+    .number()
+    .min(0, "GST percentage cannot be negative")
+    .max(100, "GST percentage cannot exceed 100%")
+    .default(0),
+  gstNumber: z.string().trim().max(30).optional().nullable(),
+});
+
 export type RestaurantChargeInput = z.infer<typeof restaurantChargeSchema>;
 export type UpdateRestaurantChargeInput = z.infer<typeof updateRestaurantChargeSchema>;
+export type TaxConfigInput = z.infer<typeof taxConfigSchema>;

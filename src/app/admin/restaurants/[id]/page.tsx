@@ -24,6 +24,7 @@ import {
   Mail,
   MapPin,
   Image as ImageIcon,
+  Trash2,
 } from "lucide-react";
 import { adminApi, AdminRestaurant } from "@/services/api/admin.api";
 import { restaurantApi, RestaurantStaffMember } from "@/services/api/restaurant.api";
@@ -31,6 +32,7 @@ import { formatPaiseToINR } from "@/lib/utils/currency";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -146,6 +148,15 @@ function RestaurantDetailsContent() {
     },
   });
 
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
+  const deleteMutation = useMutation({
+    mutationFn: () => adminApi.deleteRestaurant(restaurantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminRestaurants"] });
+      router.push("/admin");
+    },
+  });
+
   const updateTableLimitMutation = useMutation({
     mutationFn: (newLimit: number) =>
       adminApi.updateTableLimit(restaurantId, newLimit),
@@ -246,6 +257,16 @@ function RestaurantDetailsContent() {
             onClick={() => toggleStatusMutation.mutate(!restaurant.is_active)}
           >
             {restaurant.is_active ? "Deactivate Restaurant" : "Activate Restaurant"}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-[#B94A48]/30 text-[#B94A48] hover:bg-[#B94A48]/10"
+            onClick={() => setIsDeleteModalOpen(true)}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            <span>Delete Restaurant</span>
           </Button>
 
           <a
@@ -727,6 +748,20 @@ function RestaurantDetailsContent() {
             setFormSuccessMsg(`Password for ${resetTarget.email} was reset successfully!`);
             setTimeout(() => setFormSuccessMsg(null), 4000);
           }}
+        />
+      )}
+
+      {/* MODAL: DELETE RESTAURANT PERMANENTLY */}
+      {isDeleteModalOpen && (
+        <ConfirmationModal
+          isOpen={true}
+          onClose={() => setIsDeleteModalOpen(false)}
+          onConfirm={() => deleteMutation.mutate()}
+          title={`Permanently Delete "${restaurant.name}"?`}
+          message="This will completely and irreversibly delete this restaurant and all associated tables, menu items, categories, customer orders, inventory stock, charges, and staff access."
+          confirmLabel="Delete Restaurant Permanently"
+          variant="danger"
+          isLoading={deleteMutation.isPending}
         />
       )}
     </div>

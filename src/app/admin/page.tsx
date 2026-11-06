@@ -20,6 +20,7 @@ import {
   CreditCard,
   MapPin,
   Lock,
+  Trash2,
 } from "lucide-react";
 import { adminApi, AdminRestaurant, OnboardRestaurantPayload, OnboardingConfirmation } from "@/services/api/admin.api";
 import { useRouter } from "next/navigation";
@@ -38,6 +39,7 @@ export default function SuperAdminPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [createdConfirmation, setCreatedConfirmation] = React.useState<OnboardingConfirmation | null>(null);
   const [toggleStatusTarget, setToggleStatusTarget] = React.useState<AdminRestaurant | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<AdminRestaurant | null>(null);
   const [editLimitTarget, setEditLimitTarget] = React.useState<AdminRestaurant | null>(null);
 
   // Queries
@@ -58,6 +60,15 @@ export default function SuperAdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["adminRestaurants"] });
       setToggleStatusTarget(null);
+    },
+  });
+
+  // Delete restaurant mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => adminApi.deleteRestaurant(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminRestaurants"] });
+      setDeleteTarget(null);
     },
   });
 
@@ -297,7 +308,7 @@ export default function SuperAdminPage() {
                           </Badge>
                         </td>
 
-                        <td className="px-5 py-3.5 text-right space-x-2">
+                        <td className="px-5 py-3.5 text-right space-x-1.5 whitespace-nowrap">
                           <button
                             onClick={() => router.push(`/admin/restaurants/${rest.id}`)}
                             className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#783F24] text-white hover:bg-[#63331D] transition-colors cursor-pointer shadow-2xs"
@@ -317,6 +328,16 @@ export default function SuperAdminPage() {
                             }`}
                           >
                             {rest.is_active ? "Deactivate" : "Activate"}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(rest);
+                            }}
+                            className="p-1 rounded-lg text-[#78716C] hover:bg-[#B94A48]/10 hover:text-[#B94A48] transition-colors cursor-pointer"
+                            title="Delete Restaurant Permanently"
+                          >
+                            <Trash2 className="h-4 w-4 inline" />
                           </button>
                         </td>
                       </tr>
@@ -458,6 +479,20 @@ export default function SuperAdminPage() {
           confirmLabel={toggleStatusTarget.is_active ? "Deactivate" : "Activate"}
           variant={toggleStatusTarget.is_active ? "danger" : "primary"}
           isLoading={toggleMutation.isPending}
+        />
+      )}
+
+      {/* Delete Restaurant Confirmation Modal */}
+      {deleteTarget && (
+        <ConfirmationModal
+          isOpen={true}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This will permanently delete this restaurant and all its respective data: tables, menu items, categories, customer orders, inventory stock, charges, and staff access. This action is irreversible."
+          confirmLabel="Delete Restaurant Permanently"
+          variant="danger"
+          isLoading={deleteMutation.isPending}
         />
       )}
     </div>

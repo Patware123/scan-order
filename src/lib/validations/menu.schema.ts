@@ -70,7 +70,7 @@ export const menuItemSchema = z.preprocess((val: any) => {
       imageUrl: typeof rawImage === "string" ? (rawImage.trim() || null) : (rawImage ?? null),
       isVeg: resolveIsVeg(val) ?? true,
       isAvailable: val.isAvailable ?? val.is_available ?? true,
-      taxRatePercentage: val.taxRatePercentage ?? val.tax_rate_percentage ?? 5.0,
+      taxRatePercentage: val.taxRatePercentage ?? val.tax_rate_percentage ?? 0,
       sortOrder: val.sortOrder ?? val.sort_order ?? 0,
     };
   }

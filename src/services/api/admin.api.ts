@@ -115,7 +115,12 @@ export const adminApi = {
   updateRestaurantStatus: (id: string, is_active: boolean) =>
     apiRequest<AdminRestaurant>(`/api/admin/restaurants/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ is_active }),
+      body: JSON.stringify({ is_active, isActive: is_active }),
+    }),
+
+  deleteRestaurant: (id: string) =>
+    apiRequest<{ success: boolean; message: string }>(`/api/admin/restaurants/${id}`, {
+      method: "DELETE",
     }),
 
   updateTableLimit: (id: string, maxTables: number) =>

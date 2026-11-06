@@ -9,8 +9,12 @@ import {
   inventoryMovementSchema,
   recipeIngredientSchema,
 } from "@/lib/validations/inventory.schema";
-import { restaurantChargeSchema } from "@/lib/validations/charges.schema";
+import {
+  restaurantChargeSchema,
+  taxConfigSchema,
+} from "@/lib/validations/charges.schema";
 import { menuItemSchema, updateMenuItemSchema } from "@/lib/validations/menu.schema";
+import { updateRestaurantSchema } from "@/lib/validations/restaurant.schema";
 
 describe("Taxes & Charges Calculation Logic", () => {
   function calculateCharges(
@@ -119,6 +123,67 @@ describe("Taxes & Charges Calculation Logic", () => {
     assert.equal(parcelResult.totalPaise, 54000);
     assert.ok(parcelResult.breakdown.some((b) => b.name === "Packaging Fee"));
     assert.ok(!parcelResult.breakdown.some((b) => b.name === "Service Charge"));
+  });
+
+  it("does not show or charge Taxes (GST) when owner has not configured GST", () => {
+    const subtotalPaise = 35000; // ₹350.00
+    const ownerTaxConfig = { isGstEnabled: false, gstPercentage: 0 };
+
+    const gstRate = ownerTaxConfig.isGstEnabled ? ownerTaxConfig.gstPercentage : 0;
+    const taxPaise = gstRate > 0 ? Math.round((subtotalPaise * gstRate) / 100) : 0;
+    const shouldShowTax = taxPaise > 0 && ownerTaxConfig.isGstEnabled;
+
+    assert.equal(taxPaise, 0);
+    assert.equal(shouldShowTax, false);
+  });
+
+  it("calculates and shows Taxes (GST) when configured by restaurant owner", () => {
+    const subtotalPaise = 35000; // ₹350.00
+    const ownerTaxConfig = { isGstEnabled: true, gstPercentage: 5 }; // 5% GST
+
+    const gstRate = ownerTaxConfig.isGstEnabled ? ownerTaxConfig.gstPercentage : 0;
+    const taxPaise = gstRate > 0 ? Math.round((subtotalPaise * gstRate) / 100) : 0;
+    const shouldShowTax = taxPaise > 0 && ownerTaxConfig.isGstEnabled;
+
+    assert.equal(taxPaise, 1750); // ₹17.50
+    assert.equal(shouldShowTax, true);
+    assert.equal(subtotalPaise + taxPaise, 36750); // ₹367.50
+  });
+
+  it("validates tax configuration schema correctly", () => {
+    // Valid 5% GST
+    const validConfig = taxConfigSchema.parse({
+      isGstEnabled: true,
+      gstPercentage: 5,
+      gstNumber: "27AAAAA0000A1Z5",
+    });
+    assert.equal(validConfig.isGstEnabled, true);
+    assert.equal(validConfig.gstPercentage, 5);
+    assert.equal(validConfig.gstNumber, "27AAAAA0000A1Z5");
+
+    // Disabled GST
+    const disabledConfig = taxConfigSchema.parse({
+      isGstEnabled: false,
+      gstPercentage: 0,
+    });
+    assert.equal(disabledConfig.isGstEnabled, false);
+    assert.equal(disabledConfig.gstPercentage, 0);
+
+    // Negative percentage rejected
+    assert.throws(() => {
+      taxConfigSchema.parse({
+        isGstEnabled: true,
+        gstPercentage: -5,
+      });
+    });
+
+    // Exceeding 100% rejected
+    assert.throws(() => {
+      taxConfigSchema.parse({
+        isGstEnabled: true,
+        gstPercentage: 105,
+      });
+    });
   });
 });
 
@@ -332,6 +397,32 @@ describe("Inventory & Charges Schema Validations", () => {
         dietary_type: "VEG",
       });
       assert.equal(updateVeg.isVeg, true);
+    });
+  });
+
+  describe("Restaurant Status & Deactivation Logic", () => {
+    it("correctly parses deactivation with snake_case is_active false", () => {
+      const parsed = updateRestaurantSchema.parse({
+        is_active: false,
+      });
+      assert.equal(parsed.isActive, false);
+      assert.equal(parsed.is_active, false);
+    });
+
+    it("correctly parses activation with snake_case is_active true", () => {
+      const parsed = updateRestaurantSchema.parse({
+        is_active: true,
+      });
+      assert.equal(parsed.isActive, true);
+      assert.equal(parsed.is_active, true);
+    });
+
+    it("correctly parses activation with camelCase isActive true", () => {
+      const parsed = updateRestaurantSchema.parse({
+        isActive: true,
+      });
+      assert.equal(parsed.isActive, true);
+      assert.equal(parsed.is_active, true);
     });
   });
 });

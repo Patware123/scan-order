@@ -204,7 +204,11 @@ export async function updateRestaurant(
   if (input.currency !== undefined) updateData.currency = input.currency;
   if (input.gstNumber !== undefined) updateData.gst_number = input.gstNumber;
   if (input.fssaiLicense !== undefined) updateData.fssai_license = input.fssaiLicense;
-  if (input.isActive !== undefined) updateData.is_active = input.isActive;
+  if (input.isActive !== undefined) {
+    updateData.is_active = input.isActive;
+  } else if ((input as any).is_active !== undefined) {
+    updateData.is_active = (input as any).is_active;
+  }
 
   const { data, error } = await adminClient
     .from("restaurants")
@@ -553,5 +557,110 @@ export async function checkTableLimit(restaurantId: string): Promise<{
     currentTables,
     maxTables,
     allowed: currentTables < maxTables,
+  };
+}
+
+/**
+ * Permanently deletes a restaurant and all associated resources:
+ * Orders, Order items, Inventory, Menu items & categories, Tables & QR tokens,
+ * Charges & Taxes, Subscriptions, Memberships, Branding, and Audit logs.
+ */
+export async function deleteRestaurant(
+  restaurantId: string
+): Promise<{ success: boolean; message: string }> {
+  const adminClient = createAdminClient();
+
+  // 1. Verify restaurant exists
+  const { data: restaurant, error: fetchErr } = await adminClient
+    .from("restaurants")
+    .select("id, name, slug")
+    .eq("id", restaurantId)
+    .single();
+
+  if (fetchErr || !restaurant) {
+    throw new NotFoundError("Restaurant not found");
+  }
+
+  // 2. Cascade delete all child data in proper dependency order to avoid foreign key restrict errors
+  // A. Orders, items, idempotency keys
+  try {
+    const { data: orders } = await adminClient
+      .from("orders")
+      .select("id")
+      .eq("restaurant_id", restaurantId);
+
+    if (orders && orders.length > 0) {
+      const orderIds = orders.map((o) => o.id);
+      await adminClient.from("order_items").delete().in("order_id", orderIds);
+      await adminClient.from("order_idempotency_keys").delete().eq("restaurant_id", restaurantId);
+      await adminClient.from("orders").delete().eq("restaurant_id", restaurantId);
+    }
+  } catch (err) {
+    console.warn("Order tables deletion warning:", err);
+  }
+
+  // B. Inventory movements, recipe ingredients, inventory items
+  try {
+    await adminClient.from("inventory_stock_movements").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("recipe_ingredients").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("inventory_items").delete().eq("restaurant_id", restaurantId);
+  } catch (err) {
+    console.warn("Inventory tables deletion warning:", err);
+  }
+
+  // C. Menu item variants, menu items, menu categories
+  try {
+    await adminClient.from("menu_item_variants").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("menu_items").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("menu_categories").delete().eq("restaurant_id", restaurantId);
+  } catch (err) {
+    console.warn("Menu tables deletion warning:", err);
+  }
+
+  // D. QR tokens and Restaurant tables
+  try {
+    await adminClient.from("qr_tokens").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("restaurant_tables").delete().eq("restaurant_id", restaurantId);
+  } catch (err) {
+    console.warn("Table tables deletion warning:", err);
+  }
+
+  // E. Charges & Taxes
+  try {
+    await adminClient.from("restaurant_charges").delete().eq("restaurant_id", restaurantId);
+  } catch (err) {
+    console.warn("Charges deletion warning:", err);
+  }
+
+  // F. Subscriptions, Invitations, Memberships
+  try {
+    await adminClient.from("restaurant_subscriptions").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("invitations").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("user_restaurant_memberships").delete().eq("restaurant_id", restaurantId);
+  } catch (err) {
+    console.warn("Memberships deletion warning:", err);
+  }
+
+  // G. Branding & Audit logs
+  try {
+    await adminClient.from("restaurant_branding").delete().eq("restaurant_id", restaurantId);
+    await adminClient.from("audit_logs").delete().eq("restaurant_id", restaurantId);
+  } catch (err) {
+    console.warn("Branding/Audit logs deletion warning:", err);
+  }
+
+  // 3. Delete restaurant itself
+  const { error: deleteErr } = await adminClient
+    .from("restaurants")
+    .delete()
+    .eq("id", restaurantId);
+
+  if (deleteErr) {
+    throw new BadRequestError(`Failed to delete restaurant: ${deleteErr.message}`);
+  }
+
+  return {
+    success: true,
+    message: `Restaurant '${restaurant.name}' and all associated data deleted successfully`,
   };
 }

@@ -103,6 +103,13 @@ export function CreateOrderModal({
     enabled: isOpen && !!restaurantId,
   });
 
+  // 5. Fetch Restaurant Taxes (GST) Configuration
+  const { data: taxConfig } = useQuery({
+    queryKey: ["restaurantTaxConfig", restaurantId],
+    queryFn: () => restaurantApi.getTaxConfig(restaurantId),
+    enabled: isOpen && !!restaurantId,
+  });
+
   // Available (unlocked & active) tables for Dine-In
   const availableTables = tables.filter((t) => t.is_active && !t.is_locked);
 
@@ -233,18 +240,20 @@ export function CreateOrderModal({
     setCartItems((prev) => prev.filter((item) => item.id !== cartKey));
   };
 
-  // Calculations
+  // Calculations based on Owner-configured Taxes (GST)
   const subtotalPaise = cartItems.reduce(
     (sum, i) => sum + i.unitPricePaise * i.quantity,
     0
   );
 
-  const taxPaise = cartItems.reduce((sum, i) => {
-    const lineTotal = i.unitPricePaise * i.quantity;
-    return sum + Math.round((lineTotal * i.taxRatePercentage) / 100);
-  }, 0);
+  const isGstEnabled = Boolean(taxConfig?.isGstEnabled);
+  const gstRate = isGstEnabled ? Number(taxConfig?.gstPercentage || 0) : 0;
+  const taxPaise = gstRate > 0 ? Math.round((subtotalPaise * gstRate) / 100) : 0;
 
-  const additionalChargesPaise = charges.reduce((sum, ch) => {
+  // Filter out any charges named GST to prevent duplicate tax calculation
+  const nonTaxCharges = charges.filter((ch) => !ch.name.toLowerCase().includes("gst"));
+
+  const additionalChargesPaise = nonTaxCharges.reduce((sum, ch) => {
     if (!ch.is_active) return sum;
     if (ch.charge_type === "PERCENTAGE") {
       return sum + Math.round((subtotalPaise * Number(ch.rate_or_amount)) / 100);
@@ -809,11 +818,14 @@ export function CreateOrderModal({
                     <span>Subtotal</span>
                     <span>{formatPaiseToINR(subtotalPaise)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Taxes (GST)</span>
-                    <span>{formatPaiseToINR(taxPaise)}</span>
-                  </div>
-                  {charges.map((ch) => (
+                  {/* Taxes (GST): Only show if configured by Restaurant Owner */}
+                  {taxPaise > 0 && gstRate > 0 && (
+                    <div className="flex justify-between">
+                      <span>Taxes (GST {gstRate}%)</span>
+                      <span>{formatPaiseToINR(taxPaise)}</span>
+                    </div>
+                  )}
+                  {nonTaxCharges.map((ch) => (
                     <div key={ch.id} className="flex justify-between">
                       <span>
                         {ch.name}{" "}

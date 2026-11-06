@@ -250,7 +250,7 @@ export async function createMenuItem(
       image_url: input.imageUrl || null,
       is_veg: input.isVeg ?? true,
       is_available: input.isAvailable ?? true,
-      tax_rate_percentage: input.taxRatePercentage ?? 5.0,
+      tax_rate_percentage: input.taxRatePercentage ?? 0,
       sort_order: input.sortOrder ?? 0,
     })
     .select()

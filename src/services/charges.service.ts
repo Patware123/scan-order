@@ -2,9 +2,194 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   RestaurantChargeInput,
   UpdateRestaurantChargeInput,
+  TaxConfigInput,
 } from "@/lib/validations/charges.schema";
 import { ChargeBreakdown } from "@/types/order.types";
 import { NotFoundError, BadRequestError } from "@/lib/utils/errors";
+
+export interface RestaurantTaxConfig {
+  isGstEnabled: boolean;
+  gstPercentage: number;
+  gstNumber: string | null;
+}
+
+/**
+ * Resolves the restaurant's configured Taxes (GST) percentage and status.
+ * If not configured or disabled, isGstEnabled is false and gstPercentage is 0.
+ */
+export async function getRestaurantTaxConfig(
+  restaurantId: string
+): Promise<RestaurantTaxConfig> {
+  const adminClient = createAdminClient();
+
+  // 1. Fetch restaurant row for gst_number
+  const { data: restaurant } = await adminClient
+    .from("restaurants")
+    .select("gst_number")
+    .eq("id", restaurantId)
+    .maybeSingle();
+
+  // 2. Fetch charges for active GST charge
+  const { data: charges } = await adminClient
+    .from("restaurant_charges")
+    .select("rate_or_amount, is_active, name")
+    .eq("restaurant_id", restaurantId)
+    .ilike("name", "%gst%");
+
+  const activeGstCharge = charges?.find(
+    (c) => c.is_active && Number(c.rate_or_amount) > 0
+  );
+
+  // 3. Check branding tagline tag [GST:X]
+  const { data: branding } = await adminClient
+    .from("restaurant_branding")
+    .select("tagline")
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  const gstTagMatch = branding?.tagline?.match(/\[GST:([0-9.]+)\]/);
+  const tagGstRate = gstTagMatch ? parseFloat(gstTagMatch[1]) : null;
+
+  if (activeGstCharge) {
+    return {
+      isGstEnabled: true,
+      gstPercentage: Number(activeGstCharge.rate_or_amount),
+      gstNumber: restaurant?.gst_number || null,
+    };
+  }
+
+  if (tagGstRate !== null && tagGstRate > 0) {
+    return {
+      isGstEnabled: true,
+      gstPercentage: tagGstRate,
+      gstNumber: restaurant?.gst_number || null,
+    };
+  }
+
+  return {
+    isGstEnabled: false,
+    gstPercentage: 0,
+    gstNumber: restaurant?.gst_number || null,
+  };
+}
+
+/**
+ * Updates the restaurant's Taxes (GST) configuration.
+ * Configures the percentage, creates/updates the GST charge, updates branding tagline,
+ * updates restaurants.gst_number, and syncs menu_items tax_rate_percentage.
+ */
+export async function updateRestaurantTaxConfig(
+  restaurantId: string,
+  input: TaxConfigInput
+): Promise<RestaurantTaxConfig> {
+  const adminClient = createAdminClient();
+
+  const isEnabled = Boolean(input.isGstEnabled && input.gstPercentage > 0);
+  const gstRate = isEnabled ? Number(input.gstPercentage) : 0;
+
+  // 1. Update GST Number on restaurants table if provided
+  if (input.gstNumber !== undefined) {
+    await adminClient
+      .from("restaurants")
+      .update({
+        gst_number: input.gstNumber?.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", restaurantId);
+  }
+
+  // 2. Update branding tagline metadata tag [GST:X], preserving [TABLE_LIMIT:X]
+  const { data: branding } = await adminClient
+    .from("restaurant_branding")
+    .select("tagline")
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  let tagline = branding?.tagline || "";
+  tagline = tagline.replace(/\[GST:[^\]]+\]\s*/g, "").trim();
+  if (isEnabled) {
+    tagline = `[GST:${gstRate}] ${tagline}`.trim();
+  }
+
+  await adminClient
+    .from("restaurant_branding")
+    .update({
+      tagline: tagline || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("restaurant_id", restaurantId);
+
+  // 3. Upsert or update GST charge in restaurant_charges
+  const { data: existingGstCharges } = await adminClient
+    .from("restaurant_charges")
+    .select("id, name")
+    .eq("restaurant_id", restaurantId)
+    .ilike("name", "%gst%");
+
+  if (isEnabled) {
+    if (existingGstCharges && existingGstCharges.length > 0) {
+      const [primaryGst, ...duplicates] = existingGstCharges;
+      await adminClient
+        .from("restaurant_charges")
+        .update({
+          name: "GST",
+          charge_type: "PERCENTAGE",
+          rate_or_amount: gstRate,
+          is_active: true,
+          applies_to: "ALL",
+          sort_order: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", primaryGst.id);
+
+      for (const dup of duplicates) {
+        await adminClient
+          .from("restaurant_charges")
+          .update({ is_active: false })
+          .eq("id", dup.id);
+      }
+    } else {
+      await adminClient.from("restaurant_charges").insert({
+        restaurant_id: restaurantId,
+        name: "GST",
+        charge_type: "PERCENTAGE",
+        rate_or_amount: gstRate,
+        is_active: true,
+        applies_to: "ALL",
+        sort_order: 0,
+      });
+    }
+  } else {
+    // Disabled: set all GST charges to inactive
+    if (existingGstCharges && existingGstCharges.length > 0) {
+      for (const ch of existingGstCharges) {
+        await adminClient
+          .from("restaurant_charges")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq("id", ch.id);
+      }
+    }
+  }
+
+  // 4. Update menu_items tax_rate_percentage to stay in sync
+  try {
+    await adminClient
+      .from("menu_items")
+      .update({
+        tax_rate_percentage: gstRate,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("restaurant_id", restaurantId);
+  } catch (err) {
+    console.warn("Could not batch update menu_items tax_rate_percentage:", err);
+  }
+
+  return {
+    isGstEnabled: isEnabled,
+    gstPercentage: gstRate,
+    gstNumber: input.gstNumber?.trim() || null,
+  };
+}
 
 export async function getRestaurantCharges(
   restaurantId: string,
@@ -144,6 +329,11 @@ export async function calculateOrderCharges(
   const chargesBreakdown: ChargeBreakdown[] = [];
 
   for (const ch of activeCharges) {
+    // Skip GST charges here as Taxes (GST) are calculated into tax_paise
+    if (ch.name.toLowerCase().includes("gst")) {
+      continue;
+    }
+
     let calculatedPaise = 0;
     if (ch.charge_type === "PERCENTAGE") {
       // rate_or_amount is percentage e.g. 5.0 for 5%
