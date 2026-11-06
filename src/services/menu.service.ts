@@ -182,7 +182,43 @@ export async function getMenuItems(
     throw new BadRequestError(`Failed to fetch menu items: ${error.message}`);
   }
 
-  return data || [];
+  const items = (data || []).map((i: any) => {
+    const isVegBool = Boolean(i.is_veg);
+    return {
+      ...i,
+      is_veg: isVegBool,
+      dietary_type: isVegBool ? "VEG" : "NON_VEG",
+    };
+  });
+
+  if (items.length > 0) {
+    try {
+      const itemIds = items.map((i: any) => i.id);
+      const { data: variants } = await adminClient
+        .from("menu_item_variants")
+        .select("*")
+        .in("menu_item_id", itemIds)
+        .order("sort_order", { ascending: true });
+
+      if (variants && variants.length > 0) {
+        const variantsByItem = new Map<string, any[]>();
+        for (const v of variants) {
+          if (!variantsByItem.has(v.menu_item_id)) {
+            variantsByItem.set(v.menu_item_id, []);
+          }
+          variantsByItem.get(v.menu_item_id)!.push(v);
+        }
+        return items.map((i: any) => ({
+          ...i,
+          variants: variantsByItem.get(i.id) || [],
+        }));
+      }
+    } catch {
+      // If variants table not yet present, fallback gracefully
+    }
+  }
+
+  return items.map((i: any) => ({ ...i, variants: [] }));
 }
 
 export async function createMenuItem(
@@ -358,14 +394,19 @@ export async function uploadMenuItemImage(
   const adminClient = createAdminClient();
   const bucketName = "menu-items";
 
-  // Check or ensure storage bucket exists
-  const { data: buckets } = await adminClient.storage.listBuckets();
-  const exists = buckets?.some((b) => b.name === bucketName);
-  if (!exists) {
-    await adminClient.storage.createBucket(bucketName, { public: true });
+  // Safely ensure storage bucket exists
+  try {
+    const { data: buckets } = await adminClient.storage.listBuckets();
+    const exists = buckets?.some((b) => b.name === bucketName);
+    if (!exists) {
+      await adminClient.storage.createBucket(bucketName, { public: true });
+    }
+  } catch (bucketErr) {
+    // If bucket already exists or permissions restrict listing, proceed with upload
   }
 
-  const filePath = `${restaurantId}/${Date.now()}-${fileName.replace(/\s+/g, "_")}`;
+  const cleanFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const filePath = `${restaurantId}/${Date.now()}-${cleanFileName}`;
 
   const { data: uploadData, error: uploadError } = await adminClient.storage
     .from(bucketName)
@@ -382,20 +423,160 @@ export async function uploadMenuItemImage(
   const publicUrl = urlData.publicUrl;
 
   if (itemId) {
-    // Also record in menu_item_images and update menu_items.image_url
-    await adminClient.from("menu_item_images").insert({
-      restaurant_id: restaurantId,
-      menu_item_id: itemId,
-      image_url: publicUrl,
-      is_primary: true,
-    });
+    try {
+      // Also record in menu_item_images and update menu_items.image_url
+      await adminClient.from("menu_item_images").insert({
+        restaurant_id: restaurantId,
+        menu_item_id: itemId,
+        image_url: publicUrl,
+        is_primary: true,
+      });
 
-    await adminClient
-      .from("menu_items")
-      .update({ image_url: publicUrl })
-      .eq("id", itemId)
-      .eq("restaurant_id", restaurantId);
+      await adminClient
+        .from("menu_items")
+        .update({ image_url: publicUrl })
+        .eq("id", itemId)
+        .eq("restaurant_id", restaurantId);
+    } catch (dbErr) {
+      console.warn("Failed to link image to menu item record:", dbErr);
+    }
   }
 
-  return { imageUrl: publicUrl };
+  return {
+    imageUrl: publicUrl,
+    url: publicUrl,
+    images: [publicUrl],
+  };
 }
+
+// ==========================================
+// MENU ITEM VARIANTS (Requirement 8)
+// ==========================================
+
+export async function getMenuItemVariants(
+  restaurantId: string,
+  menuItemId: string
+) {
+  const adminClient = createAdminClient();
+
+  const { data, error } = await adminClient
+    .from("menu_item_variants")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .eq("menu_item_id", menuItemId)
+    .order("sort_order", { ascending: true })
+    .order("price_paise", { ascending: true });
+
+  if (error) {
+    // Return empty array if table not yet populated or error occurs
+    return [];
+  }
+
+  return data || [];
+}
+
+export async function createMenuItemVariant(
+  restaurantId: string,
+  menuItemId: string,
+  input: {
+    name: string;
+    pricePaise: number;
+    isAvailable?: boolean;
+    sortOrder?: number;
+  }
+) {
+  const adminClient = createAdminClient();
+
+  // Validate item exists and belongs to restaurant
+  const { data: item } = await adminClient
+    .from("menu_items")
+    .select("id")
+    .eq("id", menuItemId)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  if (!item) {
+    throw new NotFoundError("Parent menu item not found");
+  }
+
+  const { data, error } = await adminClient
+    .from("menu_item_variants")
+    .insert({
+      restaurant_id: restaurantId,
+      menu_item_id: menuItemId,
+      name: input.name,
+      price_paise: input.pricePaise,
+      is_available: input.isAvailable ?? true,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new BadRequestError(`Failed to create variant: ${error?.message}`);
+  }
+
+  return data;
+}
+
+export async function updateMenuItemVariant(
+  restaurantId: string,
+  variantId: string,
+  input: {
+    name?: string;
+    pricePaise?: number;
+    isAvailable?: boolean;
+    sortOrder?: number;
+  }
+) {
+  const adminClient = createAdminClient();
+
+  const updateData: {
+    name?: string;
+    price_paise?: number;
+    is_available?: boolean;
+    sort_order?: number;
+    updated_at: string;
+  } = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (input.name !== undefined) updateData.name = input.name;
+  if (input.pricePaise !== undefined) updateData.price_paise = input.pricePaise;
+  if (input.isAvailable !== undefined) updateData.is_available = input.isAvailable;
+  if (input.sortOrder !== undefined) updateData.sort_order = input.sortOrder;
+
+  const { data, error } = await adminClient
+    .from("menu_item_variants")
+    .update(updateData)
+    .eq("id", variantId)
+    .eq("restaurant_id", restaurantId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new NotFoundError("Variant not found or update failed");
+  }
+
+  return data;
+}
+
+export async function deleteMenuItemVariant(
+  restaurantId: string,
+  variantId: string
+) {
+  const adminClient = createAdminClient();
+
+  const { error } = await adminClient
+    .from("menu_item_variants")
+    .delete()
+    .eq("id", variantId)
+    .eq("restaurant_id", restaurantId);
+
+  if (error) {
+    throw new BadRequestError(`Failed to delete variant: ${error.message}`);
+  }
+
+  return { success: true };
+}
+

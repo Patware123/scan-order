@@ -19,6 +19,16 @@ export type PaymentStatus = "UNPAID" | "PAID" | "REFUNDED";
 export type ActorType = "CUSTOMER" | "STAFF" | "SYSTEM";
 export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
 export type SubscriptionStatus = "ACTIVE" | "PAST_DUE" | "CANCELLED" | "TRIAL";
+export type OrderType = "DINE_IN" | "PARCEL";
+export type OrderSource = "CUSTOMER" | "OWNER" | "MANAGER";
+export type InventoryMovementType =
+  | "PURCHASE"
+  | "USAGE"
+  | "WASTAGE"
+  | "DAMAGED"
+  | "ADJUSTMENT";
+export type ChargeType = "PERCENTAGE" | "FIXED";
+export type ChargeAppliesTo = "ALL" | "DINE_IN" | "PARCEL";
 
 export interface Database {
   public: {
@@ -246,6 +256,9 @@ export interface Database {
           table_number: string;
           capacity: number;
           is_active: boolean;
+          is_scanner_active: boolean;
+          is_locked: boolean;
+          locked_order_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -255,6 +268,9 @@ export interface Database {
           table_number: string;
           capacity?: number;
           is_active?: boolean;
+          is_scanner_active?: boolean;
+          is_locked?: boolean;
+          locked_order_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -264,6 +280,9 @@ export interface Database {
           table_number?: string;
           capacity?: number;
           is_active?: boolean;
+          is_scanner_active?: boolean;
+          is_locked?: boolean;
+          locked_order_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -411,45 +430,78 @@ export interface Database {
         Row: {
           id: string;
           restaurant_id: string;
-          table_id: string;
+          table_id: string | null;
           order_number: string;
           order_status: OrderStatus;
           payment_status: PaymentStatus;
+          order_type: OrderType;
+          order_source: OrderSource;
+          created_by_user_id: string | null;
+          customer_name: string | null;
+          customer_phone: string | null;
           subtotal_paise: number;
           tax_paise: number;
+          additional_charges_paise: number;
+          charges_snapshot: Json;
           total_paise: number;
           guest_tracking_token: string;
           special_instructions: string | null;
+          inventory_deducted: boolean;
+          is_archived: boolean;
+          deleted_at: string | null;
+          deleted_by: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           restaurant_id: string;
-          table_id: string;
+          table_id?: string | null;
           order_number: string;
           order_status?: OrderStatus;
           payment_status?: PaymentStatus;
+          order_type?: OrderType;
+          order_source?: OrderSource;
+          created_by_user_id?: string | null;
+          customer_name?: string | null;
+          customer_phone?: string | null;
           subtotal_paise: number;
           tax_paise: number;
+          additional_charges_paise?: number;
+          charges_snapshot?: Json;
           total_paise: number;
           guest_tracking_token: string;
           special_instructions?: string | null;
+          inventory_deducted?: boolean;
+          is_archived?: boolean;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           restaurant_id?: string;
-          table_id?: string;
+          table_id?: string | null;
           order_number?: string;
           order_status?: OrderStatus;
           payment_status?: PaymentStatus;
+          order_type?: OrderType;
+          order_source?: OrderSource;
+          created_by_user_id?: string | null;
+          customer_name?: string | null;
+          customer_phone?: string | null;
           subtotal_paise?: number;
           tax_paise?: number;
+          additional_charges_paise?: number;
+          charges_snapshot?: Json;
           total_paise?: number;
           guest_tracking_token?: string;
           special_instructions?: string | null;
+          inventory_deducted?: boolean;
+          is_archived?: boolean;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -460,7 +512,9 @@ export interface Database {
           id: string;
           order_id: string;
           menu_item_id: string | null;
+          variant_id: string | null;
           item_name_snapshot: string;
+          variant_name_snapshot: string | null;
           unit_price_paise: number;
           quantity: number;
           line_total_paise: number;
@@ -470,7 +524,9 @@ export interface Database {
           id?: string;
           order_id: string;
           menu_item_id?: string | null;
+          variant_id?: string | null;
           item_name_snapshot: string;
+          variant_name_snapshot?: string | null;
           unit_price_paise: number;
           quantity: number;
           line_total_paise: number;
@@ -480,7 +536,9 @@ export interface Database {
           id?: string;
           order_id?: string;
           menu_item_id?: string | null;
+          variant_id?: string | null;
           item_name_snapshot?: string;
+          variant_name_snapshot?: string | null;
           unit_price_paise?: number;
           quantity?: number;
           line_total_paise?: number;
@@ -581,6 +639,198 @@ export interface Database {
           details?: Json | null;
           ip_address?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      menu_item_variants: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          menu_item_id: string;
+          name: string;
+          price_paise: number;
+          is_available: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          restaurant_id: string;
+          menu_item_id: string;
+          name: string;
+          price_paise: number;
+          is_available?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          restaurant_id?: string;
+          menu_item_id?: string;
+          name?: string;
+          price_paise?: number;
+          is_available?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inventory_items: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          name: string;
+          sku: string | null;
+          current_stock: number;
+          unit: string;
+          low_stock_threshold: number;
+          purchase_price_paise: number;
+          supplier_name: string | null;
+          expiry_date: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          restaurant_id: string;
+          name: string;
+          sku?: string | null;
+          current_stock?: number;
+          unit?: string;
+          low_stock_threshold?: number;
+          purchase_price_paise?: number;
+          supplier_name?: string | null;
+          expiry_date?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          restaurant_id?: string;
+          name?: string;
+          sku?: string | null;
+          current_stock?: number;
+          unit?: string;
+          low_stock_threshold?: number;
+          purchase_price_paise?: number;
+          supplier_name?: string | null;
+          expiry_date?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inventory_movements: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          inventory_item_id: string;
+          movement_type: InventoryMovementType;
+          quantity: number;
+          stock_before: number;
+          stock_after: number;
+          reason: string | null;
+          order_id: string | null;
+          performed_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          restaurant_id: string;
+          inventory_item_id: string;
+          movement_type: InventoryMovementType;
+          quantity: number;
+          stock_before: number;
+          stock_after: number;
+          reason?: string | null;
+          order_id?: string | null;
+          performed_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          restaurant_id?: string;
+          inventory_item_id?: string;
+          movement_type?: InventoryMovementType;
+          quantity?: number;
+          stock_before?: number;
+          stock_after?: number;
+          reason?: string | null;
+          order_id?: string | null;
+          performed_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      menu_item_ingredients: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          menu_item_id: string;
+          variant_id: string | null;
+          inventory_item_id: string;
+          quantity_required: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          restaurant_id: string;
+          menu_item_id: string;
+          variant_id?: string | null;
+          inventory_item_id: string;
+          quantity_required: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          restaurant_id?: string;
+          menu_item_id?: string;
+          variant_id?: string | null;
+          inventory_item_id?: string;
+          quantity_required?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      restaurant_charges: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          name: string;
+          charge_type: ChargeType;
+          rate_or_amount: number;
+          applies_to: ChargeAppliesTo;
+          is_active: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          restaurant_id: string;
+          name: string;
+          charge_type: ChargeType;
+          rate_or_amount: number;
+          applies_to?: ChargeAppliesTo;
+          is_active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          restaurant_id?: string;
+          name?: string;
+          charge_type?: ChargeType;
+          rate_or_amount?: number;
+          applies_to?: ChargeAppliesTo;
+          is_active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };

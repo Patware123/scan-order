@@ -183,6 +183,8 @@ export async function resolveTableFromToken(token: string): Promise<{
   restaurantName: string;
   restaurantSlug: string;
   currency: string;
+  isScannerActive?: boolean;
+  isLocked?: boolean;
 }> {
   const adminClient = createAdminClient();
 
@@ -234,6 +236,29 @@ export async function resolveTableFromToken(token: string): Promise<{
     throw new ForbiddenError("This restaurant is currently closed or inactive");
   }
 
+  // Check scanner activation and table lock security
+  let isScannerActive = true;
+  let isLocked = false;
+  try {
+    const { data: tableSecurity } = await adminClient
+      .from("restaurant_tables")
+      .select("is_scanner_active, is_locked")
+      .eq("id", qrToken.table_id)
+      .maybeSingle();
+
+    if (tableSecurity) {
+      const sec = tableSecurity as unknown as { is_scanner_active?: boolean; is_locked?: boolean };
+      if (sec.is_scanner_active === false) {
+        isScannerActive = false;
+      }
+      if (sec.is_locked === true) {
+        isLocked = true;
+      }
+    }
+  } catch {
+    // Graceful fallback if security columns are pending migration
+  }
+
   return {
     restaurantId: qrToken.restaurant_id,
     tableId: qrToken.table_id,
@@ -241,5 +266,7 @@ export async function resolveTableFromToken(token: string): Promise<{
     restaurantName: table.restaurants.name,
     restaurantSlug: table.restaurants.slug,
     currency: table.restaurants.currency,
+    isScannerActive,
+    isLocked,
   };
 }

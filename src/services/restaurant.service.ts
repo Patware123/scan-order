@@ -372,16 +372,40 @@ export async function updateBranding(
 ) {
   const adminClient = createAdminClient();
 
+  if (input.name) {
+    await adminClient
+      .from("restaurants")
+      .update({ name: input.name, updated_at: new Date().toISOString() })
+      .eq("id", restaurantId);
+  }
+
+  // Preserve table limit tag if present in existing tagline
+  const { data: existingBranding } = await adminClient
+    .from("restaurant_branding")
+    .select("tagline")
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  const tableLimitTag = existingBranding?.tagline?.match(/\[TABLE_LIMIT:\d+\]/)?.[0];
+  let finalTagline = input.tagline ?? (input as any).address ?? null;
+  if (tableLimitTag) {
+    if (finalTagline) {
+      finalTagline = `${tableLimitTag} ${finalTagline.replace(/\[TABLE_LIMIT:\d+\]\s*/, "")}`.trim();
+    } else {
+      finalTagline = tableLimitTag;
+    }
+  }
+
   const { data, error } = await adminClient
     .from("restaurant_branding")
     .upsert({
       restaurant_id: restaurantId,
       logo_url: input.logoUrl ?? null,
       banner_url: input.bannerUrl ?? null,
-      primary_color: input.primaryColor,
-      tagline: input.tagline ?? null,
-      support_phone: input.supportPhone ?? null,
-      support_email: input.supportEmail ?? null,
+      primary_color: input.primaryColor || "#783F24",
+      tagline: finalTagline,
+      support_phone: input.supportPhone ?? (input as any).phone ?? null,
+      support_email: input.supportEmail ?? (input as any).email ?? null,
       updated_at: new Date().toISOString(),
     })
     .select()

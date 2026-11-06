@@ -15,6 +15,8 @@ import {
   Flame,
   Upload,
   AlertCircle,
+  RefreshCw,
+  ImageIcon,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import {
@@ -162,11 +164,10 @@ export default function MenuManagementPage() {
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           <button
             onClick={() => setSelectedCategory("ALL")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              selectedCategory === "ALL"
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${selectedCategory === "ALL"
                 ? "bg-[#783F24] text-white"
                 : "bg-[#FAF8F4] text-[#78716C] hover:bg-[#F3E6D4]/50"
-            }`}
+              }`}
           >
             All Items ({menuItems?.length || 0})
           </button>
@@ -177,11 +178,10 @@ export default function MenuManagementPage() {
             return (
               <div
                 key={cat.id}
-                className={`group flex items-center rounded-xl border text-xs font-semibold whitespace-nowrap transition-all ${
-                  isSelected
+                className={`group flex items-center rounded-xl border text-xs font-semibold whitespace-nowrap transition-all ${isSelected
                     ? "bg-[#783F24] text-white border-[#783F24]"
                     : "bg-[#FAF8F4] text-[#78716C] border-[#E7E1D8] hover:bg-[#F3E6D4]/50"
-                }`}
+                  }`}
               >
                 <button
                   onClick={() => setSelectedCategory(cat.id)}
@@ -194,9 +194,8 @@ export default function MenuManagementPage() {
                     setEditingCategory(cat);
                     setIsCategoryModalOpen(true);
                   }}
-                  className={`p-1 mr-1 rounded-md opacity-60 hover:opacity-100 cursor-pointer ${
-                    isSelected ? "hover:bg-white/20" : "hover:bg-[#E7E1D8]"
-                  }`}
+                  className={`p-1 mr-1 rounded-md opacity-60 hover:opacity-100 cursor-pointer ${isSelected ? "hover:bg-white/20" : "hover:bg-[#E7E1D8]"
+                    }`}
                   title="Edit Category"
                 >
                   <Edit2 className="h-3 w-3" />
@@ -252,133 +251,247 @@ export default function MenuManagementPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredItems.map((item) => {
-            const isVeg = item.dietary_type === "VEG" || item.dietary_type === "VEGAN";
+            const isVeg = item.is_veg === true || item.dietary_type === "VEG" || item.dietary_type === "VEGAN";
             const categoryName =
               categories?.find((c) => c.id === item.category_id)?.name || "Uncategorized";
 
             return (
               <div
                 key={item.id}
-                className={`rounded-2xl border bg-white p-4 shadow-xs flex flex-col justify-between transition-all ${
-                  item.is_available ? "border-[#E7E1D8]" : "border-[#E7E1D8] opacity-70"
-                }`}
+                className={`group rounded-2xl border bg-white shadow-xs flex flex-col justify-between transition-all hover:shadow-md ${item.image_url ? "overflow-hidden" : "p-4"
+                  } ${item.is_available ? "border-[#E7E1D8]" : "border-[#E7E1D8] opacity-70"
+                  }`}
               >
-                <div className="space-y-2.5">
-                  <div className="flex gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-1">
+                {item.image_url ? (
+                  <>
+                    {/* Top Hero Banner Image */}
+                    <div className="relative w-full h-40 overflow-hidden bg-[#FAF8F4]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        onError={(e) => {
+                          // Hide broken image gracefully so container background shows cleanly
+                          (e.currentTarget as HTMLImageElement).style.opacity = "0.3";
+                        }}
+                      />
+
+                      {/* Dietary & Category Overlay Pill */}
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-black/5 shadow-xs">
                         <span
-                          className={`h-2.5 w-2.5 rounded-xs flex items-center justify-center border ${
-                            isVeg
+                          className={`h-2.5 w-2.5 rounded-xs flex items-center justify-center border ${isVeg
                               ? "border-[#557A52] text-[#557A52]"
                               : "border-[#B94A48] text-[#B94A48]"
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              isVeg ? "bg-[#557A52]" : "bg-[#B94A48]"
-                            }`}
+                            className={`h-1.5 w-1.5 rounded-full ${isVeg ? "bg-[#557A52]" : "bg-[#B94A48]"
+                              }`}
                           />
                         </span>
-                        <span className="text-3xs font-semibold uppercase text-[#78716C] truncate">
+                        <span className="text-3xs font-semibold uppercase text-[#78716C] truncate max-w-[120px]">
                           {categoryName}
                         </span>
                       </div>
 
-                      <h3 className="text-sm font-bold text-[#29241F] leading-snug">
-                        {item.name}
-                      </h3>
+                      {/* Spice Level & Prep Time Badges Overlay */}
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                        {item.spice_level ? (
+                          <span className="inline-flex items-center text-3xs text-white bg-black/60 backdrop-blur-xs px-2 py-1 rounded-lg gap-1">
+                            <Flame className="h-3 w-3 fill-[#F59E0B] text-[#F59E0B]" />
+                            {item.spice_level > 1 ? "Spicy" : "Mild"}
+                          </span>
+                        ) : null}
+                        {item.preparation_time_minutes ? (
+                          <span className="inline-flex items-center text-3xs text-white bg-black/60 backdrop-blur-xs px-2 py-1 rounded-lg gap-1">
+                            <Clock className="h-3 w-3" />
+                            {item.preparation_time_minutes}m
+                          </span>
+                        ) : null}
+                      </div>
 
-                      {item.description && (
-                        <p className="text-xs text-[#78716C] line-clamp-2 mt-1">
-                          {item.description}
-                        </p>
+                      {!item.is_available && (
+                        <div className="absolute inset-0 bg-black/45 backdrop-blur-2xs flex items-center justify-center">
+                          <span className="bg-[#B94A48] text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-lg shadow-md">
+                            Sold Out
+                          </span>
+                        </div>
                       )}
                     </div>
 
-                    {item.image_url && (
-                      <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#E7E1D8] bg-[#FAF8F4]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={item.image_url}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
+                    {/* Card Content */}
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      <div>
+                        <h3 className="text-base font-bold text-[#29241F] leading-snug group-hover:text-[#783F24] transition-colors">
+                          {item.name}
+                        </h3>
+
+                        {item.description && (
+                          <p className="text-xs text-[#78716C] line-clamp-2 mt-1 leading-relaxed">
+                            {item.description}
+                          </p>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-2 text-2xs text-[#78716C]">
-                    {item.spice_level ? (
-                      <span className="flex items-center gap-0.5 text-[#B77932]">
-                        <Flame className="h-3 w-3" />
-                        {item.spice_level > 1 ? "Spicy" : "Mild"}
+                      {/* Bottom Row */}
+                      <div className="flex items-center justify-between pt-3 border-t border-[#FAF8F4]">
+                        <span className="text-base font-bold text-[#783F24]">
+                          {formatPaiseToINR(item.price_paise)}
+                        </span>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() =>
+                              toggleMutation.mutate({
+                                itemId: item.id,
+                                isAvailable: !item.is_available,
+                              })
+                            }
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-2xs font-semibold transition-colors cursor-pointer ${item.is_available
+                                ? "bg-[#557A52]/10 text-[#557A52] hover:bg-[#557A52]/20"
+                                : "bg-[#B94A48]/10 text-[#B94A48] hover:bg-[#B94A48]/20"
+                              }`}
+                            title="Toggle Item Availability"
+                          >
+                            {item.is_available ? (
+                              <>
+                                <Eye className="h-3 w-3" />
+                                <span>Active</span>
+                              </>
+                            ) : (
+                              <>
+                                <EyeOff className="h-3 w-3" />
+                                <span>Sold Out</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setEditingItem(item);
+                              setIsItemModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg border border-[#E7E1D8] text-[#78716C] hover:text-[#29241F] hover:bg-[#FAF8F4] cursor-pointer"
+                            title="Edit Item"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => setDeleteItemTarget(item)}
+                            className="p-1.5 rounded-lg border border-[#E7E1D8] text-[#78716C] hover:text-[#B94A48] hover:bg-[#B94A48]/10 cursor-pointer"
+                            title="Delete Item"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2.5">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span
+                            className={`h-2.5 w-2.5 rounded-xs flex items-center justify-center border ${isVeg
+                                ? "border-[#557A52] text-[#557A52]"
+                                : "border-[#B94A48] text-[#B94A48]"
+                              }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${isVeg ? "bg-[#557A52]" : "bg-[#B94A48]"
+                                }`}
+                            />
+                          </span>
+                          <span className="text-3xs font-semibold uppercase text-[#78716C] truncate">
+                            {categoryName}
+                          </span>
+                        </div>
+
+                        <h3 className="text-sm font-bold text-[#29241F] leading-snug">
+                          {item.name}
+                        </h3>
+
+                        {item.description && (
+                          <p className="text-xs text-[#78716C] line-clamp-2 mt-1">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-2xs text-[#78716C]">
+                        {item.spice_level ? (
+                          <span className="flex items-center gap-0.5 text-[#B77932]">
+                            <Flame className="h-3 w-3" />
+                            {item.spice_level > 1 ? "Spicy" : "Mild"}
+                          </span>
+                        ) : null}
+                        {item.preparation_time_minutes ? (
+                          <span className="flex items-center gap-0.5">
+                            <Clock className="h-3 w-3" />
+                            {item.preparation_time_minutes}m prep
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Bottom Row */}
+                    <div className="flex items-center justify-between pt-3 mt-3 border-t border-[#FAF8F4]">
+                      <span className="text-base font-bold text-[#783F24]">
+                        {formatPaiseToINR(item.price_paise)}
                       </span>
-                    ) : null}
-                    {item.preparation_time_minutes ? (
-                      <span className="flex items-center gap-0.5">
-                        <Clock className="h-3 w-3" />
-                        {item.preparation_time_minutes}m prep
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
 
-                {/* Bottom Row */}
-                <div className="flex items-center justify-between pt-3 mt-3 border-t border-[#FAF8F4]">
-                  <span className="text-base font-bold text-[#783F24]">
-                    {formatPaiseToINR(item.price_paise)}
-                  </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() =>
+                            toggleMutation.mutate({
+                              itemId: item.id,
+                              isAvailable: !item.is_available,
+                            })
+                          }
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-2xs font-semibold transition-colors cursor-pointer ${item.is_available
+                              ? "bg-[#557A52]/10 text-[#557A52] hover:bg-[#557A52]/20"
+                              : "bg-[#B94A48]/10 text-[#B94A48] hover:bg-[#B94A48]/20"
+                            }`}
+                          title="Toggle Item Availability"
+                        >
+                          {item.is_available ? (
+                            <>
+                              <Eye className="h-3 w-3" />
+                              <span>Active</span>
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="h-3 w-3" />
+                              <span>Sold Out</span>
+                            </>
+                          )}
+                        </button>
 
-                  <div className="flex items-center gap-1.5">
-                    {/* Availability Toggle Button */}
-                    <button
-                      onClick={() =>
-                        toggleMutation.mutate({
-                          itemId: item.id,
-                          isAvailable: !item.is_available,
-                        })
-                      }
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-2xs font-semibold transition-colors cursor-pointer ${
-                        item.is_available
-                          ? "bg-[#557A52]/10 text-[#557A52] hover:bg-[#557A52]/20"
-                          : "bg-[#B94A48]/10 text-[#B94A48] hover:bg-[#B94A48]/20"
-                      }`}
-                      title="Toggle Item Availability"
-                    >
-                      {item.is_available ? (
-                        <>
-                          <Eye className="h-3 w-3" />
-                          <span>Active</span>
-                        </>
-                      ) : (
-                        <>
-                          <EyeOff className="h-3 w-3" />
-                          <span>Sold Out</span>
-                        </>
-                      )}
-                    </button>
+                        <button
+                          onClick={() => {
+                            setEditingItem(item);
+                            setIsItemModalOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg border border-[#E7E1D8] text-[#78716C] hover:text-[#29241F] hover:bg-[#FAF8F4] cursor-pointer"
+                          title="Edit Item"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
 
-                    <button
-                      onClick={() => {
-                        setEditingItem(item);
-                        setIsItemModalOpen(true);
-                      }}
-                      className="p-1.5 rounded-lg border border-[#E7E1D8] text-[#78716C] hover:text-[#29241F] hover:bg-[#FAF8F4] cursor-pointer"
-                      title="Edit Item"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-
-                    <button
-                      onClick={() => setDeleteItemTarget(item)}
-                      className="p-1.5 rounded-lg border border-[#E7E1D8] text-[#78716C] hover:text-[#B94A48] hover:bg-[#B94A48]/10 cursor-pointer"
-                      title="Delete Item"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
+                        <button
+                          onClick={() => setDeleteItemTarget(item)}
+                          className="p-1.5 rounded-lg border border-[#E7E1D8] text-[#78716C] hover:text-[#B94A48] hover:bg-[#B94A48]/10 cursor-pointer"
+                          title="Delete Item"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
@@ -466,9 +579,10 @@ function MenuItemModal({
     initialItem ? paiseToRupees(initialItem.price_paise).toString() : ""
   );
   const [dietaryType, setDietaryType] = React.useState<MenuItemData["dietary_type"]>(
-    initialItem?.dietary_type || "VEG"
+    initialItem?.dietary_type || (initialItem?.is_veg === false ? "NON_VEG" : "VEG")
   );
   const [imageUrl, setImageUrl] = React.useState(initialItem?.image_url || "");
+  const [localPreview, setLocalPreview] = React.useState<string | null>(null);
   const [spiceLevel, setSpiceLevel] = React.useState(initialItem?.spice_level?.toString() || "0");
   const [prepTime, setPrepTime] = React.useState(
     initialItem?.preparation_time_minutes?.toString() || "15"
@@ -476,14 +590,29 @@ function MenuItemModal({
   const [isUploading, setIsUploading] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    setName(initialItem?.name || "");
+    setCategoryId(initialItem?.category_id || categories[0]?.id || "");
+    setDescription(initialItem?.description || "");
+    setRupees(initialItem ? paiseToRupees(initialItem.price_paise).toString() : "");
+    setDietaryType(initialItem?.dietary_type || (initialItem?.is_veg === false ? "NON_VEG" : "VEG"));
+    setImageUrl(initialItem?.image_url || "");
+    setSpiceLevel(initialItem?.spice_level?.toString() || "0");
+    setPrepTime(initialItem?.preparation_time_minutes?.toString() || "15");
+    setLocalPreview(null);
+  }, [initialItem, categories]);
+
   const mutation = useMutation({
     mutationFn: async () => {
       const pricePaise = rupeesToPaise(parseFloat(rupees) || 0);
+      const isVegBoolean = dietaryType === "VEG" || dietaryType === "VEGAN";
       const payload: Partial<MenuItemData> = {
         name,
         category_id: categoryId,
         description: description || undefined,
         price_paise: pricePaise,
+        is_veg: isVegBoolean,
+        isVeg: isVegBoolean,
         dietary_type: dietaryType,
         image_url: imageUrl || undefined,
         spice_level: parseInt(spiceLevel) || 0,
@@ -509,10 +638,13 @@ function MenuItemModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Instant local preview
+    const objectUrl = URL.createObjectURL(file);
+    setLocalPreview(objectUrl);
     setIsUploading(true);
     setErrorMsg(null);
     try {
-      const url = await restaurantApi.uploadMenuImage(restaurantId, file);
+      const url = await restaurantApi.uploadMenuImage(restaurantId, file, initialItem?.id);
       setImageUrl(url);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Failed to upload image.");
@@ -535,7 +667,7 @@ function MenuItemModal({
       isOpen={isOpen}
       onClose={onClose}
       title={initialItem ? "Edit Menu Item" : "Create Menu Item"}
-      size="md"
+      size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4 pt-2">
         <Input
@@ -588,11 +720,10 @@ function MenuItemModal({
                 key={type}
                 type="button"
                 onClick={() => setDietaryType(type)}
-                className={`p-2 rounded-xl border text-center font-semibold cursor-pointer ${
-                  dietaryType === type
+                className={`p-2 rounded-xl border text-center font-semibold cursor-pointer ${dietaryType === type
                     ? "bg-[#783F24] text-white border-[#783F24]"
                     : "bg-[#FAF8F4] text-[#78716C] border-[#E7E1D8]"
-                }`}
+                  }`}
               >
                 {type}
               </button>
@@ -639,23 +770,80 @@ function MenuItemModal({
           />
         </div>
 
-        {/* Image Upload / URL */}
-        <div className="space-y-2 pt-1 border-t border-[#FAF8F4]">
-          <label className="text-xs font-semibold text-[#29241F]">
-            Item Image
-          </label>
-          <div className="flex items-center gap-3">
-            {imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
+        {/* Item Image Upload & Preview Banner */}
+        <div className="space-y-2 pt-2 border-t border-[#FAF8F4]">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-[#29241F]">
+              Item Banner Image
+            </label>
+            {(localPreview || imageUrl) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setImageUrl("");
+                  setLocalPreview(null);
+                }}
+                className="text-3xs text-[#B94A48] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Trash2 className="h-3 w-3" />
+                <span>Remove Image</span>
+              </button>
+            )}
+          </div>
+
+          {localPreview || imageUrl ? (
+            <div className="relative w-full h-40 rounded-2xl overflow-hidden border border-[#E7E1D8] bg-[#FAF8F4] group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={imageUrl}
-                alt="Preview"
-                className="h-12 w-12 rounded-xl object-cover border border-[#E7E1D8]"
+                src={localPreview || imageUrl}
+                alt="Item preview"
+                className="w-full h-full object-cover"
+                onError={() => {
+                  if (!localPreview) {
+                    setErrorMsg("Uploaded image URL could not be loaded by your browser.");
+                  }
+                }}
               />
-            ) : null}
-            <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[#E7E1D8] bg-[#FAF8F4] text-xs font-semibold text-[#783F24] hover:bg-[#F3E6D4]/50 cursor-pointer">
-              <Upload className="h-4 w-4" />
-              <span>{isUploading ? "Uploading..." : "Upload New Image"}</span>
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <label className="px-3.5 py-2 rounded-xl bg-white/95 text-xs font-bold text-[#29241F] hover:bg-white cursor-pointer shadow-md flex items-center gap-1.5 transition-transform hover:scale-105">
+                  <Upload className="h-4 w-4 text-[#783F24]" />
+                  <span>Change Image</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isUploading}
+                    onChange={handleImageFile}
+                  />
+                </label>
+              </div>
+
+              {isUploading && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-2xs flex items-center justify-center">
+                  <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white text-[#783F24] text-xs font-bold shadow-lg">
+                    <RefreshCw className="h-4 w-4 animate-spin text-[#783F24]" />
+                    <span>Uploading image...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center gap-2 w-full h-32 rounded-2xl border-2 border-dashed border-[#E7E1D8] hover:border-[#783F24] bg-[#FAF8F4] hover:bg-[#F3E6D4]/30 transition-all cursor-pointer p-4 text-center">
+              <div className="h-10 w-10 rounded-xl bg-[#F3E6D4] text-[#783F24] flex items-center justify-center">
+                {isUploading ? (
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Upload className="h-5 w-5" />
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-[#29241F]">
+                  {isUploading ? "Uploading image..." : "Click to upload item image"}
+                </p>
+                <p className="text-3xs text-[#78716C] mt-0.5">
+                  PNG, JPG, WebP up to 5MB. Displays as full-width top card banner.
+                </p>
+              </div>
               <input
                 type="file"
                 accept="image/*"
@@ -664,6 +852,20 @@ function MenuItemModal({
                 onChange={handleImageFile}
               />
             </label>
+          )}
+
+          {/* Optional Direct Image URL input */}
+          <div className="pt-1">
+            <input
+              type="text"
+              placeholder="Or paste direct image URL (https://...)"
+              value={imageUrl}
+              onChange={(e) => {
+                setImageUrl(e.target.value);
+                setLocalPreview(null);
+              }}
+              className="w-full h-9 rounded-xl border border-[#E7E1D8] bg-white px-3 text-2xs text-[#29241F] placeholder:text-[#A8A29E] focus:border-[#783F24] focus:outline-none"
+            />
           </div>
         </div>
 
