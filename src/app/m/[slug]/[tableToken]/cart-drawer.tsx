@@ -97,7 +97,7 @@ export function CartDrawer({
       />
 
       {/* Drawer */}
-      <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
+      <div className="fixed inset-y-0 right-0 flex max-w-full pl-2">
         <div className="w-screen max-w-md bg-[#FAF8F4] flex flex-col shadow-2xl border-l border-[#E7E1D8]">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-[#E7E1D8] bg-white px-5 py-4">
@@ -151,11 +151,10 @@ export function CartDrawer({
                           <div className="flex items-center gap-1.5">
                             {item.dietaryType && (
                               <span
-                                className={`h-2 w-2 rounded-full ${
-                                  item.dietaryType === "VEG"
+                                className={`h-2 w-2 rounded-full ${item.dietaryType === "VEG"
                                     ? "bg-[#557A52]"
                                     : "bg-[#B94A48]"
-                                }`}
+                                  }`}
                               />
                             )}
                             <h4 className="text-sm font-medium text-[#29241F] truncate">
