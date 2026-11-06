@@ -356,8 +356,14 @@ function KitchenOrderTicket({
               </Badge>
             )}
           </div>
-          <div className="text-xs font-bold text-[#783F24]">
-            {tableLabel}
+          <div className="text-xs font-bold text-[#783F24] flex items-center gap-1.5">
+            {order.order_type === "PARCEL" ? (
+              <span className="px-2 py-0.5 rounded-md bg-[#783F24]/10 text-[#783F24] border border-[#783F24]/30 font-black">
+                PARCEL / TAKEAWAY
+              </span>
+            ) : (
+              <span>{tableLabel}</span>
+            )}
           </div>
         </div>
 

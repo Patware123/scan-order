@@ -60,9 +60,31 @@ export default function DashboardOverviewPage() {
   }
 
   const metrics = dailyReport?.metrics;
-  const activeCount = recentOrders?.filter(
-    (o) => o.order_status !== "COMPLETED" && o.order_status !== "CANCELLED" && o.order_status !== "REJECTED"
-  ).length || 0;
+  const fallbackActiveCount =
+    recentOrders?.filter(
+      (o) =>
+        o.order_status !== "COMPLETED" &&
+        o.order_status !== "CANCELLED" &&
+        o.order_status !== "REJECTED"
+    ).length ?? 0;
+
+  const activeCount =
+    metrics?.active_orders ??
+    metrics?.activeOrders ??
+    fallbackActiveCount;
+
+  const grossRevenuePaise =
+    metrics?.total_revenue_paise ?? metrics?.totalRevenuePaise ?? 0;
+  const aovPaise =
+    metrics?.average_order_value_paise ??
+    metrics?.averageOrderValuePaise ??
+    ((metrics?.average_order_value_rupees || 0) * 100);
+  const totalOrdersCount =
+    metrics?.total_orders ?? metrics?.totalOrders ?? 0;
+  const completedOrdersCount =
+    metrics?.completed_orders ?? metrics?.completedOrders ?? 0;
+  const cancelledOrdersCount =
+    metrics?.cancelled_orders ?? metrics?.cancelledOrders ?? 0;
 
   return (
     <div className="space-y-6">
@@ -112,11 +134,11 @@ export default function DashboardOverviewPage() {
               <Skeleton className="h-8 w-28 rounded-lg" />
             ) : (
               <div className="text-xl sm:text-2xl font-bold text-[#29241F]">
-                {formatPaiseToINR(metrics?.total_revenue_paise || 0)}
+                {formatPaiseToINR(grossRevenuePaise)}
               </div>
             )}
             <p className="text-3xs sm:text-2xs text-[#78716C] mt-1">
-              Avg Order: {formatPaiseToINR((metrics?.average_order_value_rupees || 0) * 100)}
+              Avg Order: {formatPaiseToINR(aovPaise)}
             </p>
           </CardContent>
         </Card>
@@ -136,11 +158,11 @@ export default function DashboardOverviewPage() {
               <Skeleton className="h-8 w-16 rounded-lg" />
             ) : (
               <div className="text-xl sm:text-2xl font-bold text-[#29241F]">
-                {metrics?.total_orders || 0}
+                {totalOrdersCount}
               </div>
             )}
             <p className="text-3xs sm:text-2xs text-[#557A52] mt-1 font-medium">
-              {metrics?.completed_orders || 0} Completed
+              {completedOrdersCount} Completed
             </p>
           </CardContent>
         </Card>
@@ -184,11 +206,11 @@ export default function DashboardOverviewPage() {
               <Skeleton className="h-8 w-16 rounded-lg" />
             ) : (
               <div className="text-xl sm:text-2xl font-bold text-[#29241F]">
-                {metrics?.completed_orders || 0}
+                {completedOrdersCount}
               </div>
             )}
             <p className="text-3xs sm:text-2xs text-[#78716C] mt-1">
-              {metrics?.cancelled_orders || 0} Cancelled / Rejected
+              {cancelledOrdersCount} Cancelled / Rejected
             </p>
           </CardContent>
         </Card>

@@ -45,3 +45,29 @@ export const updateTableSchema = z.preprocess((val: unknown) => {
 export type CreateTableInput = z.infer<typeof createTableSchema>;
 export type UpdateTableInput = z.infer<typeof updateTableSchema>;
 
+export const toggleScannerSchema = z.preprocess((val: any) => {
+  if (typeof val === "object" && val !== null) {
+    return {
+      isScannerActive: val.isScannerActive ?? val.is_scanner_active ?? val.isActive ?? val.is_active,
+    };
+  }
+  return val;
+}, z.object({
+  isScannerActive: z.boolean(),
+}));
+
+export const toggleLockSchema = z.preprocess((val: any) => {
+  if (typeof val === "object" && val !== null) {
+    return {
+      isLocked: val.isLocked ?? val.is_locked,
+    };
+  }
+  return val;
+}, z.object({
+  isLocked: z.boolean(),
+}));
+
+export type ToggleScannerInput = z.infer<typeof toggleScannerSchema>;
+export type ToggleLockInput = z.infer<typeof toggleLockSchema>;
+
+

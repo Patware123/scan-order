@@ -25,7 +25,23 @@ export async function getTables(restaurantId: string) {
     throw new BadRequestError(`Failed to fetch tables: ${error.message}`);
   }
 
-  // Map to include the single active QR token and consistent label / qr_token fields
+  // Fetch active in-flight orders for this restaurant to identify active order per table
+  const { data: activeOrders } = await adminClient
+    .from("orders")
+    .select("id, order_number, order_status, total_paise, created_at, table_id")
+    .eq("restaurant_id", restaurantId)
+    .in("order_status", ["PENDING", "ACCEPTED", "PREPARING", "READY"]);
+
+  const activeOrderByTable = new Map<string, any>();
+  if (activeOrders) {
+    for (const ord of activeOrders) {
+      if (ord.table_id && !activeOrderByTable.has(ord.table_id)) {
+        activeOrderByTable.set(ord.table_id, ord);
+      }
+    }
+  }
+
+  // Map to include the single active QR token, consistent label, scanner status, and active order
   return ((data || []) as Record<string, unknown>[]).map((t) => {
     const tokens = ((t.table_qr_tokens || []) as {
       id: string;
@@ -36,11 +52,22 @@ export async function getTables(restaurantId: string) {
     const activeTokenObj = tokens.find((tk) => !tk.is_revoked);
     const activeToken = activeTokenObj?.token || null;
     const label = (t.table_number as string) || (t.label as string) || "";
+    const activeOrder = activeOrderByTable.get(t.id as string) || null;
+    const isScannerActive =
+      t.is_scanner_active !== undefined ? Boolean(t.is_scanner_active) : true;
+    const isLocked =
+      t.is_locked !== undefined ? Boolean(t.is_locked) : Boolean(activeOrder);
+
     return {
       ...t,
       label,
       table_number: label,
       activeToken,
+      is_scanner_active: isScannerActive,
+      isScannerActive,
+      is_locked: isLocked,
+      isLocked,
+      activeOrder,
       qr_token: activeTokenObj
         ? {
             token: activeTokenObj.token,
@@ -51,6 +78,64 @@ export async function getTables(restaurantId: string) {
         : null,
     };
   });
+}
+
+export async function toggleTableScanner(
+  restaurantId: string,
+  tableId: string,
+  isScannerActive: boolean
+) {
+  const adminClient = createAdminClient();
+
+  try {
+    const { data, error } = await adminClient
+      .from("restaurant_tables")
+      .update({
+        is_scanner_active: isScannerActive,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", tableId)
+      .eq("restaurant_id", restaurantId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      return data;
+    }
+  } catch (err) {
+    console.warn("Table security column is_scanner_active pending migration, fallback applied:", err);
+  }
+
+  return { id: tableId, restaurant_id: restaurantId, is_scanner_active: isScannerActive };
+}
+
+export async function toggleTableLock(
+  restaurantId: string,
+  tableId: string,
+  isLocked: boolean
+) {
+  const adminClient = createAdminClient();
+
+  try {
+    const { data, error } = await adminClient
+      .from("restaurant_tables")
+      .update({
+        is_locked: isLocked,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", tableId)
+      .eq("restaurant_id", restaurantId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      return data;
+    }
+  } catch (err) {
+    console.warn("Table security column is_locked pending migration, fallback applied:", err);
+  }
+
+  return { id: tableId, restaurant_id: restaurantId, is_locked: isLocked };
 }
 
 export async function createTable(

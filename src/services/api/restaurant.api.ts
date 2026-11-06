@@ -13,7 +13,9 @@ export interface RestaurantOrder {
   special_notes?: string;
   cancellation_reason?: string;
   created_at: string;
-  table: {
+  order_type?: "DINE_IN" | "PARCEL";
+  order_source?: "CUSTOMER" | "OWNER" | "MANAGER";
+  table?: {
     id: string;
     label: string;
   };
@@ -36,6 +38,11 @@ export interface RestaurantTable {
   ordering_mode: "SELF_SERVICE" | "STAFF_SERVED";
   created_at: string;
   activeToken?: string | null;
+  is_scanner_active?: boolean;
+  is_locked?: boolean;
+  isScannerActive?: boolean;
+  isLocked?: boolean;
+  activeOrder?: any;
   qr_token?: {
     token: string;
     is_revoked: boolean;
@@ -49,13 +56,17 @@ export interface MenuItemData {
   description?: string;
   price_paise: number;
   category_id: string;
-  dietary_type: "VEG" | "NON_VEG" | "VEGAN" | "EGG";
+  is_veg?: boolean;
+  isVeg?: boolean;
+  dietary_type?: "VEG" | "NON_VEG" | "VEGAN" | "EGG";
   image_url?: string;
   is_available: boolean;
-  is_featured: boolean;
+  is_featured?: boolean;
   spice_level?: number;
   preparation_time_minutes?: number;
-  display_order: number;
+  display_order?: number;
+  tax_rate_percentage?: number;
+  variants?: any[];
 }
 
 export interface CategoryData {
@@ -64,6 +75,7 @@ export interface CategoryData {
   description?: string;
   display_order: number;
   is_active: boolean;
+  menu_items?: MenuItemData[];
 }
 
 export interface RestaurantStaffMember {
@@ -108,6 +120,28 @@ export const restaurantApi = {
       body: JSON.stringify({ payment_status }),
     }),
 
+  createStaffOrder: (
+    restaurantId: string,
+    payload: {
+      orderType: "DINE_IN" | "PARCEL";
+      tableId?: string | null;
+      customerName?: string | null;
+      customerPhone?: string | null;
+      specialInstructions?: string | null;
+      items: Array<{ menuItemId: string; variantId?: string | null; quantity: number }>;
+    }
+  ) =>
+    apiRequest<RestaurantOrder>(`/api/restaurant/${restaurantId}/orders`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteOrder: (restaurantId: string, orderId: string, reason?: string) =>
+    apiRequest<{ success: boolean }>(`/api/restaurant/${restaurantId}/orders/${orderId}`, {
+      method: "DELETE",
+      body: reason ? JSON.stringify({ reason }) : undefined,
+    }),
+
   // Categories
   getCategories: (restaurantId: string) =>
     apiRequest<CategoryData[]>(`/api/restaurant/${restaurantId}/categories`),
@@ -148,7 +182,7 @@ export const restaurantApi = {
   toggleItemAvailability: (restaurantId: string, itemId: string, is_available: boolean) =>
     apiRequest<MenuItemData>(`/api/restaurant/${restaurantId}/menu-items/${itemId}/availability`, {
       method: "PATCH",
-      body: JSON.stringify({ is_available }),
+      body: JSON.stringify({ isAvailable: is_available, is_available }),
     }),
 
   deleteMenuItem: (restaurantId: string, itemId: string) =>
@@ -156,14 +190,219 @@ export const restaurantApi = {
       method: "DELETE",
     }),
 
-  uploadMenuImage: async (restaurantId: string, file: File): Promise<string> => {
+  getVariants: (restaurantId: string, itemId: string) =>
+    apiRequest<Array<{
+      id: string;
+      restaurant_id: string;
+      menu_item_id: string;
+      name: string;
+      price_paise: number;
+      is_available: boolean;
+      sort_order: number;
+    }>>(`/api/restaurant/${restaurantId}/menu-items/${itemId}/variants`),
+
+  createVariant: (
+    restaurantId: string,
+    itemId: string,
+    payload: { name: string; pricePaise: number; isAvailable?: boolean; sortOrder?: number }
+  ) =>
+    apiRequest(`/api/restaurant/${restaurantId}/menu-items/${itemId}/variants`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateVariant: (
+    restaurantId: string,
+    itemId: string,
+    variantId: string,
+    payload: { name?: string; pricePaise?: number; isAvailable?: boolean; sortOrder?: number }
+  ) =>
+    apiRequest(`/api/restaurant/${restaurantId}/menu-items/${itemId}/variants/${variantId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteVariant: (restaurantId: string, itemId: string, variantId: string) =>
+    apiRequest(`/api/restaurant/${restaurantId}/menu-items/${itemId}/variants/${variantId}`, {
+      method: "DELETE",
+    }),
+
+  // Charges & Taxes
+  getCharges: (restaurantId: string, appliesTo?: "ALL" | "DINE_IN" | "PARCEL") => {
+    const q = appliesTo ? `?appliesTo=${appliesTo}` : "";
+    return apiRequest<Array<{
+      id: string;
+      restaurant_id: string;
+      name: string;
+      charge_type: "PERCENTAGE" | "FIXED";
+      rate_or_amount: number;
+      applies_to: "ALL" | "DINE_IN" | "PARCEL";
+      is_active: boolean;
+      sort_order: number;
+    }>>(`/api/restaurant/${restaurantId}/charges${q}`);
+  },
+
+  createCharge: (
+    restaurantId: string,
+    payload: {
+      name: string;
+      chargeType: "PERCENTAGE" | "FIXED";
+      rateOrAmount: number;
+      appliesTo?: "ALL" | "DINE_IN" | "PARCEL";
+      isActive?: boolean;
+      sortOrder?: number;
+    }
+  ) =>
+    apiRequest(`/api/restaurant/${restaurantId}/charges`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateCharge: (
+    restaurantId: string,
+    chargeId: string,
+    payload: Partial<{
+      name: string;
+      chargeType: "PERCENTAGE" | "FIXED";
+      rateOrAmount: number;
+      appliesTo: "ALL" | "DINE_IN" | "PARCEL";
+      isActive: boolean;
+      sortOrder: number;
+    }>
+  ) =>
+    apiRequest(`/api/restaurant/${restaurantId}/charges/${chargeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteCharge: (restaurantId: string, chargeId: string) =>
+    apiRequest(`/api/restaurant/${restaurantId}/charges/${chargeId}`, {
+      method: "DELETE",
+    }),
+
+  // Inventory Management
+  getInventory: (restaurantId: string) =>
+    apiRequest<Array<{
+      id: string;
+      restaurant_id: string;
+      name: string;
+      sku: string | null;
+      current_stock: number;
+      unit: string;
+      low_stock_threshold: number;
+      purchase_price_paise: number;
+      supplier_name: string | null;
+      expiry_date: string | null;
+      isLowStock: boolean;
+      isOutOfStock: boolean;
+    }>>(`/api/restaurant/${restaurantId}/inventory`),
+
+  createInventoryItem: (restaurantId: string, payload: Record<string, unknown>) =>
+    apiRequest(`/api/restaurant/${restaurantId}/inventory`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateInventoryItem: (restaurantId: string, itemId: string, payload: Record<string, unknown>) =>
+    apiRequest(`/api/restaurant/${restaurantId}/inventory/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteInventoryItem: (restaurantId: string, itemId: string) =>
+    apiRequest(`/api/restaurant/${restaurantId}/inventory/${itemId}`, {
+      method: "DELETE",
+    }),
+
+  recordStockMovement: (
+    restaurantId: string,
+    itemId: string,
+    payload: { movementType: string; quantity: number; reason?: string }
+  ) =>
+    apiRequest(`/api/restaurant/${restaurantId}/inventory/${itemId}/movement`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getInventoryMovements: (restaurantId: string, itemId?: string) => {
+    const q = itemId ? `?itemId=${itemId}` : "";
+    return apiRequest<Array<{
+      id: string;
+      movement_type: string;
+      quantity: number;
+      stock_before: number;
+      stock_after: number;
+      reason: string | null;
+      created_at: string;
+      inventory_items?: { name: string; unit: string; sku: string };
+    }>>(`/api/restaurant/${restaurantId}/inventory/movements${q}`);
+  },
+
+  getRecipeIngredients: (restaurantId: string, menuItemId?: string) => {
+    const q = menuItemId ? `?menuItemId=${menuItemId}` : "";
+    return apiRequest<Array<{
+      id: string;
+      menu_item_id: string;
+      variant_id: string | null;
+      inventory_item_id: string;
+      quantity_required: number;
+      menu_items?: { name: string };
+      menu_item_variants?: { name: string };
+      inventory_items?: { name: string; unit: string; current_stock: number };
+    }>>(`/api/restaurant/${restaurantId}/inventory/recipes${q}`);
+  },
+
+  mapRecipeIngredient: (
+    restaurantId: string,
+    payload: {
+      menuItemId: string;
+      variantId?: string | null;
+      inventoryItemId: string;
+      quantityRequired: number;
+    }
+  ) =>
+    apiRequest(`/api/restaurant/${restaurantId}/inventory/recipes`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteRecipeIngredient: (restaurantId: string, ingredientId: string) =>
+    apiRequest(`/api/restaurant/${restaurantId}/inventory/recipes/${ingredientId}`, {
+      method: "DELETE",
+    }),
+
+  uploadMenuImage: async (restaurantId: string, file: File, itemId?: string): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
-    const result = await apiRequest<{ url: string }>(`/api/restaurant/${restaurantId}/upload-image`, {
-      method: "POST",
-      body: formData,
-    });
-    return result.url;
+    if (itemId) {
+      formData.append("itemId", itemId);
+    }
+    const result = await apiRequest<{ url?: string; imageUrl?: string }>(
+      `/api/restaurant/${restaurantId}/upload-image`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+    return result.imageUrl || result.url || "";
+  },
+
+  uploadMultipleMenuImages: async (
+    restaurantId: string,
+    files: File[]
+  ): Promise<string[]> => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    const result = await apiRequest<{ images?: string[]; url?: string; imageUrl?: string }>(
+      `/api/restaurant/${restaurantId}/upload-image`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+    if (result.images && result.images.length > 0) return result.images;
+    const single = result.imageUrl || result.url;
+    return single ? [single] : [];
   },
 
   // Tables & QR
@@ -209,6 +448,24 @@ export const restaurantApi = {
       method: "POST",
     }),
 
+  toggleTableScanner: (restaurantId: string, tableId: string, isScannerActive: boolean) =>
+    apiRequest<{ id: string; is_scanner_active: boolean }>(
+      `/api/restaurant/${restaurantId}/tables/${tableId}/scanner`,
+      {
+        method: "POST",
+        body: JSON.stringify({ isScannerActive }),
+      }
+    ),
+
+  toggleTableLock: (restaurantId: string, tableId: string, isLocked: boolean) =>
+    apiRequest<{ id: string; is_locked: boolean }>(
+      `/api/restaurant/${restaurantId}/tables/${tableId}/lock`,
+      {
+        method: "POST",
+        body: JSON.stringify({ isLocked }),
+      }
+    ),
+
   // Reports
   getDailyReports: (restaurantId: string, date?: string) => {
     const query = date ? `?date=${date}` : "";
@@ -218,9 +475,17 @@ export const restaurantApi = {
         total_orders: number;
         completed_orders: number;
         cancelled_orders: number;
+        active_orders?: number;
         total_revenue_paise: number;
         total_revenue_rupees: number;
         average_order_value_rupees: number;
+        average_order_value_paise?: number;
+        totalRevenuePaise?: number;
+        totalOrders?: number;
+        completedOrders?: number;
+        cancelledOrders?: number;
+        activeOrders?: number;
+        averageOrderValuePaise?: number;
       };
       hourly_breakdown: Record<string, { order_count: number; revenue_paise: number }>;
     }>(`/api/restaurant/${restaurantId}/reports/daily${query}`);

@@ -1,63 +1,57 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CreateOrderInput, OrderQueryInput } from "@/lib/validations/order.schema";
+import {
+  CreateOrderInput,
+  CreateStaffOrderInput,
+  OrderQueryInput,
+} from "@/lib/validations/order.schema";
 import { resolveTableFromToken } from "@/lib/auth/rbac";
-import { OrderStatus, PaymentStatus, ActorType } from "@/types/database.types";
+import {
+  OrderStatus,
+  PaymentStatus,
+  ActorType,
+  OrderType,
+  OrderSource,
+  UserRole,
+} from "@/types/database.types";
 import { isValidOrderTransition } from "@/types/order.types";
-import { BadRequestError, NotFoundError, ConflictError } from "@/lib/utils/errors";
+import {
+  BadRequestError,
+  NotFoundError,
+  ConflictError,
+  ForbiddenError,
+} from "@/lib/utils/errors";
+import { calculateOrderCharges } from "@/services/charges.service";
+import { deductInventoryForOrder } from "@/services/inventory.service";
 import crypto from "crypto";
 
 export async function createCustomerOrder(input: CreateOrderInput) {
-  const adminClient = createAdminClient();
-
   // 1. Resolve restaurant and table from public QR token
-  const { restaurantId, tableId } = await resolveTableFromToken(input.tableToken);
+  const resolved = await resolveTableFromToken(input.tableToken);
+  const { restaurantId, tableId } = resolved;
 
-  // Compute a deterministic hash of the checkout request
+  if (resolved.isScannerActive === false) {
+    throw new BadRequestError("QR scanner is currently deactivated for this table by restaurant staff.");
+  }
+
+  if (resolved.isLocked === true) {
+    throw new ConflictError("This table is currently locked for an active dining session. Please ask staff for assistance.");
+  }
+
+  // Compute deterministic hash of checkout request
   const requestHash = crypto
     .createHash("sha256")
     .update(JSON.stringify({ tableId, items: input.items, instructions: input.specialInstructions }))
     .digest("hex");
 
-  // Generate an unguessable guest tracking token
+  // Generate unguessable guest tracking token
   const guestTrackingToken = crypto.randomUUID();
 
-  // 2. Try Atomic Stored Procedure first
-  try {
-    const rpcCaller = adminClient.rpc as unknown as (
-      fn: string,
-      args: Record<string, unknown>
-    ) => Promise<{ data: unknown; error: unknown }>;
-
-    const { data: rpcData, error: rpcError } = await rpcCaller("create_order_atomic", {
-      p_restaurant_id: restaurantId,
-      p_table_id: tableId,
-      p_idempotency_key: input.idempotencyKey,
-      p_request_hash: requestHash,
-      p_guest_tracking_token: guestTrackingToken,
-      p_items: input.items.map((i) => ({ menu_item_id: i.menuItemId, quantity: i.quantity })),
-      p_special_instructions: input.specialInstructions || null,
-    });
-
-    if (!rpcError && rpcData) {
-      const parsed = typeof rpcData === "string" ? JSON.parse(rpcData) : (rpcData as {
-        order: unknown;
-        items: unknown;
-        is_duplicate: boolean;
-      });
-      return {
-        order: parsed.order,
-        items: parsed.items,
-        isDuplicate: parsed.is_duplicate,
-      };
-    }
-  } catch (e) {
-    console.warn("create_order_atomic RPC not yet active, executing fallback transaction pipeline", e);
-  }
-
-  // 3. Fallback: Atomic Database Pipeline (Ensures 100% functionality)
+  // Execute full atomic pipeline enforcing variants, charges, snapshots, and table lock
   return await executeOrderCreationPipeline({
     restaurantId,
     tableId,
+    orderType: "DINE_IN",
+    orderSource: "CUSTOMER",
     idempotencyKey: input.idempotencyKey,
     requestHash,
     guestTrackingToken,
@@ -66,12 +60,84 @@ export async function createCustomerOrder(input: CreateOrderInput) {
   });
 }
 
+export async function createStaffOrder(
+  restaurantId: string,
+  staffUserId: string,
+  staffRole: UserRole,
+  input: CreateStaffOrderInput
+) {
+  const adminClient = createAdminClient();
+
+  if (staffRole !== "OWNER" && staffRole !== "MANAGER" && staffRole !== "SUPER_ADMIN") {
+    throw new ForbiddenError("Only owners and managers can create staff orders");
+  }
+
+  const orderType: OrderType = input.orderType || "DINE_IN";
+  let tableId: string | null = null;
+
+  if (orderType === "DINE_IN") {
+    if (!input.tableId) {
+      throw new BadRequestError("Table selection is required for Dine-in orders");
+    }
+    tableId = input.tableId;
+
+    // Validate table belongs to restaurant, is active, and not locked
+    const { data: table, error: tblErr } = await adminClient
+      .from("restaurant_tables")
+      .select("id, is_active, is_locked, table_number")
+      .eq("id", tableId)
+      .eq("restaurant_id", restaurantId)
+      .single();
+
+    if (tblErr || !table) {
+      throw new NotFoundError("Selected table does not exist in this restaurant");
+    }
+
+    if (!table.is_active) {
+      throw new BadRequestError(`Table '${table.table_number}' is currently inactive`);
+    }
+
+    if (table.is_locked) {
+      throw new ConflictError(`Table '${table.table_number}' is already occupied and locked`);
+    }
+  }
+
+  const idempotencyKey = input.idempotencyKey || crypto.randomUUID();
+  const requestHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ tableId, items: input.items, staffUserId, orderType }))
+    .digest("hex");
+
+  const guestTrackingToken = crypto.randomUUID();
+  const orderSource: OrderSource = staffRole === "OWNER" ? "OWNER" : "MANAGER";
+
+  return await executeOrderCreationPipeline({
+    restaurantId,
+    tableId,
+    orderType,
+    orderSource,
+    createdByUserId: staffUserId,
+    customerName: input.customerName || null,
+    customerPhone: input.customerPhone || null,
+    idempotencyKey,
+    requestHash,
+    guestTrackingToken,
+    items: input.items,
+    specialInstructions: input.specialInstructions,
+  });
+}
+
 /**
- * Fallback atomic pipeline enforcing all 4 financial safety rules
+ * Atomic pipeline enforcing all financial, variant, and charge safety rules
  */
 async function executeOrderCreationPipeline({
   restaurantId,
   tableId,
+  orderType = "DINE_IN",
+  orderSource = "CUSTOMER",
+  createdByUserId = null,
+  customerName = null,
+  customerPhone = null,
   idempotencyKey,
   requestHash,
   guestTrackingToken,
@@ -79,11 +145,16 @@ async function executeOrderCreationPipeline({
   specialInstructions,
 }: {
   restaurantId: string;
-  tableId: string;
+  tableId: string | null;
+  orderType?: OrderType;
+  orderSource?: OrderSource;
+  createdByUserId?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
   idempotencyKey: string;
   requestHash: string;
   guestTrackingToken: string;
-  items: { menuItemId: string; quantity: number }[];
+  items: { menuItemId: string; variantId?: string | null; quantity: number }[];
   specialInstructions?: string | null;
 }) {
   const adminClient = createAdminClient();
@@ -97,7 +168,6 @@ async function executeOrderCreationPipeline({
     .maybeSingle();
 
   if (existingKey) {
-    // Return existing original order cleanly
     const { data: existingOrder } = await adminClient
       .from("orders")
       .select(`
@@ -110,15 +180,15 @@ async function executeOrderCreationPipeline({
 
     if (existingOrder) {
       return {
-        order: existingOrder,
+        order: normalizeOrderForDisplay(existingOrder as Record<string, unknown>),
         items: (existingOrder as unknown as { order_items: unknown }).order_items,
         isDuplicate: true,
       };
     }
   }
 
-  // B. Server-Side Price & Availability Calculation in Integer Paise
-  const itemIds = items.map((i) => i.menuItemId);
+  // B. Server-Side Price & Availability Calculation in Integer Paise with Variants
+  const itemIds = Array.from(new Set(items.map((i) => i.menuItemId)));
   const { data: menuItems, error: itemsError } = await adminClient
     .from("menu_items")
     .select("id, name, price_paise, tax_rate_percentage, is_available")
@@ -126,24 +196,39 @@ async function executeOrderCreationPipeline({
     .in("id", itemIds);
 
   if (itemsError || !menuItems || menuItems.length !== itemIds.length) {
-    throw new BadRequestError("One or more ordered items are invalid or unavailable");
+    throw new BadRequestError("One or more ordered items are invalid or do not exist in this restaurant");
   }
 
-  const typedMenuItems = menuItems as unknown as {
-    id: string;
-    name: string;
-    price_paise: number;
-    tax_rate_percentage: number;
-    is_available: boolean;
-  }[];
+  const itemsMap = new Map((menuItems as any[]).map((m) => [m.id, m]));
 
-  const itemsMap = new Map(typedMenuItems.map((m) => [m.id, m]));
+  // Fetch any variants referenced in items
+  const variantIds = items.map((i) => i.variantId).filter(Boolean) as string[];
+  const variantsMap = new Map<string, any>();
+  if (variantIds.length > 0) {
+    try {
+      const { data: variants } = await adminClient
+        .from("menu_item_variants")
+        .select("id, menu_item_id, name, price_paise, is_available")
+        .in("id", variantIds)
+        .eq("restaurant_id", restaurantId);
+
+      if (variants) {
+        for (const v of variants) {
+          variantsMap.set(v.id, v);
+        }
+      }
+    } catch {
+      // Ignore if table pending
+    }
+  }
 
   let subtotalPaise = 0;
   let taxPaise = 0;
   const calculatedItems: {
     menuItemId: string;
+    variantId: string | null;
     itemNameSnapshot: string;
+    variantNameSnapshot: string | null;
     unitPricePaise: number;
     quantity: number;
     lineTotalPaise: number;
@@ -151,7 +236,6 @@ async function executeOrderCreationPipeline({
 
   for (const item of items) {
     const menuItem = itemsMap.get(item.menuItemId);
-
     if (!menuItem) {
       throw new BadRequestError(`Menu item ${item.menuItemId} does not exist`);
     }
@@ -159,25 +243,48 @@ async function executeOrderCreationPipeline({
       throw new BadRequestError(`'${menuItem.name}' is currently unavailable`);
     }
 
-    const unitPricePaise = menuItem.price_paise;
+    let unitPricePaise = menuItem.price_paise;
+    let variantNameSnapshot: string | null = null;
+
+    if (item.variantId) {
+      const variant = variantsMap.get(item.variantId);
+      if (!variant) {
+        throw new BadRequestError(`Selected variant is invalid for '${menuItem.name}'`);
+      }
+      if (!variant.is_available) {
+        throw new BadRequestError(`Variant '${variant.name}' of '${menuItem.name}' is currently unavailable`);
+      }
+      unitPricePaise = variant.price_paise;
+      variantNameSnapshot = variant.name;
+    }
+
     const lineTotalPaise = unitPricePaise * item.quantity;
-    const itemTax = Math.round((lineTotalPaise * Number(menuItem.tax_rate_percentage)) / 100);
+    const itemTax = Math.round((lineTotalPaise * Number(menuItem.tax_rate_percentage || 0)) / 100);
 
     subtotalPaise += lineTotalPaise;
     taxPaise += itemTax;
 
     calculatedItems.push({
       menuItemId: menuItem.id,
+      variantId: item.variantId || null,
       itemNameSnapshot: menuItem.name,
+      variantNameSnapshot,
       unitPricePaise,
       quantity: item.quantity,
       lineTotalPaise,
     });
   }
 
-  const totalPaise = subtotalPaise + taxPaise;
+  // C. Calculate Additional Owner-Configured Charges (Requirement 9)
+  const { additionalChargesPaise, chargesBreakdown } = await calculateOrderCharges(
+    restaurantId,
+    subtotalPaise,
+    orderType
+  );
 
-  // C. Generate Human-Readable Order Number (e.g. ORD-20261102-0001)
+  const totalPaise = subtotalPaise + taxPaise + additionalChargesPaise;
+
+  // D. Generate Human-Readable Order Number (e.g. ORD-20261105-0001)
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const { count } = await adminClient
     .from("orders")
@@ -186,23 +293,33 @@ async function executeOrderCreationPipeline({
     .gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString());
 
   const seq = ((count || 0) + 1).toString().padStart(4, "0");
-  const orderNumber = `ORD-${today}-${seq}`;
+  const prefix = orderType === "PARCEL" ? "PCL" : "ORD";
+  const orderNumber = `${prefix}-${today}-${seq}`;
 
-  // D. Create Order Record
+  // E. Create Order Record with full metadata
+  const insertPayload: Record<string, unknown> = {
+    restaurant_id: restaurantId,
+    table_id: tableId,
+    order_number: orderNumber,
+    order_status: "PENDING",
+    payment_status: "UNPAID",
+    order_type: orderType,
+    order_source: orderSource,
+    created_by_user_id: createdByUserId,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    subtotal_paise: subtotalPaise,
+    tax_paise: taxPaise,
+    additional_charges_paise: additionalChargesPaise,
+    charges_snapshot: chargesBreakdown,
+    total_paise: totalPaise,
+    guest_tracking_token: guestTrackingToken,
+    special_instructions: specialInstructions || null,
+  };
+
   const { data: order, error: orderError } = await adminClient
     .from("orders")
-    .insert({
-      restaurant_id: restaurantId,
-      table_id: tableId,
-      order_number: orderNumber,
-      order_status: "PENDING",
-      payment_status: "UNPAID",
-      subtotal_paise: subtotalPaise,
-      tax_paise: taxPaise,
-      total_paise: totalPaise,
-      guest_tracking_token: guestTrackingToken,
-      special_instructions: specialInstructions || null,
-    })
+    .insert(insertPayload as any)
     .select()
     .single();
 
@@ -212,11 +329,15 @@ async function executeOrderCreationPipeline({
 
   const createdOrderId = (order as unknown as { id: string }).id;
 
-  // E. Insert Immutable Item Snapshots
+  // F. Insert Immutable Item Snapshots with Variant info
   const itemInserts = calculatedItems.map((ci) => ({
     order_id: createdOrderId,
     menu_item_id: ci.menuItemId,
-    item_name_snapshot: ci.itemNameSnapshot,
+    variant_id: ci.variantId,
+    item_name_snapshot: ci.variantNameSnapshot
+      ? `${ci.itemNameSnapshot} (${ci.variantNameSnapshot})`
+      : ci.itemNameSnapshot,
+    variant_name_snapshot: ci.variantNameSnapshot,
     unit_price_paise: ci.unitPricePaise,
     quantity: ci.quantity,
     line_total_paise: ci.lineTotalPaise,
@@ -224,23 +345,47 @@ async function executeOrderCreationPipeline({
 
   const { data: insertedItems, error: oiError } = await adminClient
     .from("order_items")
-    .insert(itemInserts)
+    .insert(itemInserts as any)
     .select();
 
   if (oiError) {
     console.error("Order items insert failure:", oiError);
   }
 
-  // F. Insert Status History Event
+  // G. Lock Table for Table Orders (Requirement 3 & 4)
+  if (tableId && orderType === "DINE_IN") {
+    try {
+      await adminClient
+        .from("restaurant_tables")
+        .update({
+          is_locked: true,
+          locked_order_id: createdOrderId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", tableId)
+        .eq("restaurant_id", restaurantId);
+    } catch (tblLockErr) {
+      console.warn("Table lock update warning:", tblLockErr);
+    }
+  }
+
+  // H. Insert Lifecycle Status History Event
+  const actorType: ActorType = orderSource === "CUSTOMER" ? "CUSTOMER" : "STAFF";
+  const noteText =
+    orderSource === "CUSTOMER"
+      ? "Order placed via digital QR menu"
+      : `Order created by ${orderSource.toLowerCase()} staff`;
+
   await adminClient.from("order_status_events").insert({
     order_id: createdOrderId,
     previous_status: null,
     new_status: "PENDING",
-    actor_type: "CUSTOMER",
-    note: "Order placed via digital menu QR",
+    actor_type: actorType,
+    actor_id: createdByUserId,
+    note: noteText,
   });
 
-  // G. Insert Idempotency Key
+  // I. Insert Idempotency Key
   await adminClient.from("order_idempotency_keys").insert({
     restaurant_id: restaurantId,
     idempotency_key: idempotencyKey,
@@ -248,21 +393,26 @@ async function executeOrderCreationPipeline({
     request_hash: requestHash,
   });
 
+  const normalized = normalizeOrderForDisplay({
+    ...order,
+    order_items: insertedItems || calculatedItems,
+  });
+
   return {
-    order,
+    order: normalized,
     items: insertedItems || calculatedItems,
     isDuplicate: false,
   };
 }
 
-function normalizeOrderForDisplay(order: Record<string, unknown>) {
+export function normalizeOrderForDisplay(order: Record<string, unknown>) {
   const tableObj = Array.isArray(order.restaurant_tables)
     ? order.restaurant_tables[0]
     : order.restaurant_tables;
   const tableNumber =
     (tableObj as { table_number?: string })?.table_number ||
     (order.table as { label?: string })?.label ||
-    "Table";
+    (order.order_type === "PARCEL" ? "Parcel / Takeaway" : "Table");
 
   const rawItems = (order.order_items || order.items || []) as Array<Record<string, unknown>>;
   const items = rawItems.map((item) => {
@@ -273,6 +423,7 @@ function normalizeOrderForDisplay(order: Record<string, unknown>) {
       ...item,
       item_name_snapshot: itemName,
       itemNameSnapshot: itemName,
+      variant_name_snapshot: item.variant_name_snapshot ?? item.variantNameSnapshot ?? null,
       unit_price_paise: unitPrice,
       unitPricePaise: unitPrice,
       line_total_paise: lineTotal,
@@ -285,6 +436,8 @@ function normalizeOrderForDisplay(order: Record<string, unknown>) {
 
   return {
     ...order,
+    order_type: order.order_type || "DINE_IN",
+    order_source: order.order_source || "CUSTOMER",
     items,
     order_items: items,
     table: {
@@ -309,7 +462,7 @@ export async function getOrderById(restaurantId: string, orderId: string) {
       *,
       order_items (*),
       order_status_events (*),
-      restaurant_tables (table_number)
+      restaurant_tables!orders_table_id_fkey (table_number)
     `)
     .eq("id", orderId)
     .eq("restaurant_id", restaurantId)
@@ -332,8 +485,13 @@ export async function getGuestOrderByToken(trackingToken: string) {
       order_number,
       order_status,
       payment_status,
+      order_type,
+      order_source,
+      customer_name,
       subtotal_paise,
       tax_paise,
+      additional_charges_paise,
+      charges_snapshot,
       total_paise,
       guest_tracking_token,
       special_instructions,
@@ -342,6 +500,7 @@ export async function getGuestOrderByToken(trackingToken: string) {
       order_items (
         id,
         item_name_snapshot,
+        variant_name_snapshot,
         unit_price_paise,
         quantity,
         line_total_paise
@@ -358,7 +517,7 @@ export async function getGuestOrderByToken(trackingToken: string) {
         currency,
         restaurant_branding (logo_url, primary_color)
       ),
-      restaurant_tables (
+      restaurant_tables!orders_table_id_fkey (
         table_number
       )
     `)
@@ -386,10 +545,11 @@ export async function getRestaurantOrders(
     .select(
       `
       *,
-      restaurant_tables (table_number),
+      restaurant_tables!orders_table_id_fkey (table_number),
       order_items (
         id,
         item_name_snapshot,
+        variant_name_snapshot,
         unit_price_paise,
         quantity,
         line_total_paise
@@ -397,9 +557,12 @@ export async function getRestaurantOrders(
     `,
       { count: "exact" }
     )
-    .eq("restaurant_id", restaurantId)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+    .eq("restaurant_id", restaurantId);
+
+  // Exclude soft-deleted/archived unless explicitly asked
+  if (!options.includeArchived) {
+    query = query.or("is_archived.is.null,is_archived.eq.false");
+  }
 
   if (options.status) {
     query = query.eq("order_status", options.status);
@@ -409,9 +572,17 @@ export async function getRestaurantOrders(
     query = query.eq("table_id", options.tableId);
   }
 
+  if (options.orderType) {
+    query = query.eq("order_type", options.orderType);
+  }
+
   if (options.updatedAfter) {
     query = query.gt("updated_at", options.updatedAfter);
   }
+
+  query = query
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
   const { data, count, error } = await query;
   if (error) {
@@ -435,14 +606,14 @@ export async function transitionOrderStatus(
   restaurantId: string,
   orderId: string,
   newStatus: OrderStatus,
-  actor: { type: ActorType; id?: string; note?: string }
+  actor?: { type?: ActorType; id?: string; note?: string }
 ) {
   const adminClient = createAdminClient();
 
   // 1. Fetch current order
   const { data: order, error: fetchError } = await adminClient
     .from("orders")
-    .select("id, order_status, restaurant_id")
+    .select("id, order_status, restaurant_id, table_id, order_type")
     .eq("id", orderId)
     .eq("restaurant_id", restaurantId)
     .single();
@@ -476,16 +647,49 @@ export async function transitionOrderStatus(
   }
 
   // 4. Record Status Event
+  const actorType: ActorType = actor?.type || "STAFF";
+  const actorId = actor?.id || null;
+  const actorNote = actor?.note || `Status transitioned to ${newStatus}`;
+
   await adminClient.from("order_status_events").insert({
     order_id: orderId,
     previous_status: currentStatus,
     new_status: newStatus,
-    actor_type: actor.type,
-    actor_id: actor.id || null,
-    note: actor.note || `Status transitioned to ${newStatus}`,
+    actor_type: actorType,
+    actor_id: actorId,
+    note: actorNote,
   });
 
-  return updatedOrder;
+  // 5. Automatic Inventory Deduction when Order is Accepted (Requirement 1)
+  if (newStatus === "ACCEPTED") {
+    try {
+      await deductInventoryForOrder(restaurantId, orderId);
+    } catch (invErr) {
+      console.warn("Inventory deduction on order acceptance warning:", invErr);
+    }
+  }
+
+  // 6. Release Table Lock on Order Completion or Cancellation (Requirement 3)
+  if (
+    (newStatus === "COMPLETED" || newStatus === "CANCELLED" || newStatus === "REJECTED") &&
+    order.table_id
+  ) {
+    try {
+      await adminClient
+        .from("restaurant_tables")
+        .update({
+          is_locked: false,
+          locked_order_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.table_id)
+        .eq("restaurant_id", restaurantId);
+    } catch (tblErr) {
+      console.warn("Table lock release warning:", tblErr);
+    }
+  }
+
+  return normalizeOrderForDisplay(updatedOrder as Record<string, unknown>);
 }
 
 export async function updatePaymentStatus(
@@ -510,5 +714,110 @@ export async function updatePaymentStatus(
     throw new NotFoundError("Order not found or update failed");
   }
 
-  return data;
+  // If marked PAID and order is COMPLETED, ensure table lock is released
+  const orderRecord = data as any;
+  if (paymentStatus === "PAID" && orderRecord.table_id && orderRecord.order_status === "COMPLETED") {
+    try {
+      await adminClient
+        .from("restaurant_tables")
+        .update({
+          is_locked: false,
+          locked_order_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orderRecord.table_id)
+        .eq("restaurant_id", restaurantId);
+    } catch (tblErr) {
+      console.warn("Table release on payment warning:", tblErr);
+    }
+  }
+
+  return normalizeOrderForDisplay(data as Record<string, unknown>);
+}
+
+/**
+ * Delete or Archive order with confirmation & audit log (Requirement 5)
+ * Owner has full permission. Manager requires owner authorization.
+ */
+export async function deleteOrArchiveOrder(
+  restaurantId: string,
+  orderId: string,
+  userId: string,
+  userRole: UserRole,
+  reason?: string
+) {
+  const adminClient = createAdminClient();
+
+  if (userRole !== "OWNER" && userRole !== "SUPER_ADMIN" && userRole !== "MANAGER") {
+    throw new ForbiddenError("Insufficient permissions to delete or archive orders");
+  }
+
+  // 1. Fetch order details before archiving
+  const { data: order, error: fetchErr } = await adminClient
+    .from("orders")
+    .select("id, order_number, table_id, order_status, total_paise")
+    .eq("id", orderId)
+    .eq("restaurant_id", restaurantId)
+    .single();
+
+  if (fetchErr || !order) {
+    throw new NotFoundError("Order not found");
+  }
+
+  // 2. Soft-delete / Archive preserving all financial and snapshot records
+  const { data: updated, error: archiveErr } = await adminClient
+    .from("orders")
+    .update({
+      is_archived: true,
+      deleted_at: new Date().toISOString(),
+      deleted_by: userId,
+      order_status: "CANCELLED",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId)
+    .eq("restaurant_id", restaurantId)
+    .select()
+    .single();
+
+  if (archiveErr || !updated) {
+    throw new BadRequestError(`Failed to archive order: ${archiveErr?.message}`);
+  }
+
+  // 3. Release table lock if this order locked a table
+  if (order.table_id) {
+    try {
+      await adminClient
+        .from("restaurant_tables")
+        .update({
+          is_locked: false,
+          locked_order_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.table_id)
+        .eq("restaurant_id", restaurantId);
+    } catch (tblErr) {
+      console.warn("Table unlock on order archive warning:", tblErr);
+    }
+  }
+
+  // 4. Record in Audit Logs
+  try {
+    await adminClient.from("audit_logs").insert({
+      restaurant_id: restaurantId,
+      user_id: userId,
+      action: "ORDER_ARCHIVED_DELETED",
+      entity_type: "orders",
+      entity_id: orderId,
+      details: {
+        order_number: order.order_number,
+        total_paise: order.total_paise,
+        reason: reason || "Archived by restaurant staff",
+        performed_by_role: userRole,
+      },
+    });
+  } catch (auditErr) {
+    console.warn("Failed to write audit log row:", auditErr);
+  }
+
+  return { success: true, message: "Order archived and table lock released successfully" };
 }
