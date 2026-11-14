@@ -13,12 +13,14 @@ import {
   Utensils,
   Receipt,
   Sparkles,
+  Printer,
 } from "lucide-react";
 import { publicApi, PublicOrderStatusResponse } from "@/services/api/public.api";
 import { formatPaiseToINR } from "@/lib/utils/currency";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PrintBillModal } from "@/components/orders/print-bill-modal";
 
 const STATUS_STEPS = [
   { key: "PENDING", label: "Order Placed", desc: "Sent to kitchen", icon: Clock },
@@ -61,6 +63,7 @@ function OrderTrackingContent({
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
 
   const fetchOrder = React.useCallback(async (showRefreshing = false) => {
     if (!trackingToken) return;
@@ -337,7 +340,33 @@ function OrderTrackingContent({
             </span>
           </div>
         </div>
+
+        {/* Print / View Thermal Bill Button */}
+        <div className="pt-2 border-t border-[#FAF8F4]">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsPrintModalOpen(true)}
+            className="w-full flex items-center justify-center gap-2 border-[#E7E1D8] text-[#783F24] hover:bg-[#FAF8F4]"
+          >
+            <Printer className="h-4 w-4" />
+            <span>View & Print Bill</span>
+          </Button>
+        </div>
       </div>
+
+      {/* Printable Thermal Receipt Modal */}
+      <PrintBillModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        order={order as any}
+        restaurant={{
+          name: order.restaurant?.name || "Restaurant",
+          address: order.restaurant?.address || null,
+          phone: order.restaurant?.phone || null,
+          gstNumber: order.restaurant?.gstNumber || null,
+        }}
+      />
 
       {/* Restaurant Assistance Footer */}
       {order.restaurant?.phone && (

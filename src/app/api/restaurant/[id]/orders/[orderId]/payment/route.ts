@@ -16,7 +16,7 @@ export async function PATCH(
     const json = await request.json();
     const validated = updatePaymentStatusSchema.parse(json);
 
-    const updated = await updatePaymentStatus(id, orderId, validated.paymentStatus);
+    const updated = await updatePaymentStatus(id, orderId, validated.paymentStatus, validated.paymentMode || undefined);
     return successResponse(updated, {
       message: `Payment status updated to ${validated.paymentStatus}`,
     });

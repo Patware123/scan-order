@@ -25,6 +25,7 @@ import {
   Plus,
   Trash2,
   Package,
+  Printer,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { restaurantApi, RestaurantOrder, RestaurantTable } from "@/services/api/restaurant.api";
@@ -35,6 +36,7 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Dialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateOrderModal } from "@/features/orders/create-order-modal";
+import { PrintBillModal } from "@/components/orders/print-bill-modal";
 
 type StatusFilter = "ALL" | "PENDING" | "ACCEPTED" | "PREPARING" | "READY" | "COMPLETED" | "UNPAID";
 type ViewMode = "ORDERS" | "TABLE_MATRIX";
@@ -85,10 +87,27 @@ export default function LiveOrdersPage() {
   // Payment Modal State
   const [settleOrder, setSettleOrder] = React.useState<RestaurantOrder | null>(null);
 
+  // Print Bill Modal State
+  const [printBillOrder, setPrintBillOrder] = React.useState<RestaurantOrder | null>(null);
+
   // Delete / Archive Modal State
   const [deleteTarget, setDeleteTarget] = React.useState<RestaurantOrder | null>(null);
   const [deleteReason, setDeleteReason] = React.useState("Order cancelled / table cleared");
   const [optimisticActionError, setOptimisticActionError] = React.useState<string | null>(null);
+
+  // Fetch Restaurant Branding for Bill Receipt Header
+  const { data: branding } = useQuery({
+    queryKey: ["branding", activeRestaurantId],
+    queryFn: () => (activeRestaurantId ? restaurantApi.getBranding(activeRestaurantId) : null),
+    enabled: !!activeRestaurantId,
+  });
+
+  // Fetch Tax Configuration for Bill Receipt
+  const { data: taxConfig } = useQuery({
+    queryKey: ["restaurantTaxConfig", activeRestaurantId],
+    queryFn: () => (activeRestaurantId ? restaurantApi.getTaxConfig(activeRestaurantId) : null),
+    enabled: !!activeRestaurantId,
+  });
 
   // Fetch Tables
   const { data: tables = [], isLoading: isTablesLoading } = useQuery<RestaurantTable[]>({
@@ -1040,6 +1059,31 @@ export default function LiveOrdersPage() {
                           </Button>
                         )}
 
+                        {isCompleted && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            className="w-full bg-[#783F24] hover:bg-[#5B2E19] flex items-center justify-center gap-1.5 shadow-xs"
+                            onClick={() => setPrintBillOrder(order)}
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            <span>Print Bill</span>
+                          </Button>
+                        )}
+
+                        {/* Quick Print Button on any active order */}
+                        {!isCompleted && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Print Bill Receipt"
+                            onClick={() => setPrintBillOrder(order)}
+                            className="px-2.5 text-[#783F24] border-[#E7E1D8] hover:bg-[#FAF8F4]"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+
                         {/* Settle Payment Button if Unpaid */}
                         {order.payment_status === "UNPAID" && (
                           <Button
@@ -1173,6 +1217,20 @@ export default function LiveOrdersPage() {
           restaurantId={activeRestaurantId}
         />
       )}
+
+      {/* Thermal POS Bill Print Modal */}
+      <PrintBillModal
+        isOpen={!!printBillOrder}
+        onClose={() => setPrintBillOrder(null)}
+        order={printBillOrder as any}
+        restaurant={{
+          name: branding?.name || "Restaurant",
+          address: branding?.address || null,
+          phone: branding?.phone || null,
+          gstNumber: taxConfig?.gstNumber || null,
+        }}
+        gstPercentage={taxConfig?.isGstEnabled ? taxConfig.gstPercentage : null}
+      />
     </div>
   );
 }

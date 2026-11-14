@@ -41,17 +41,57 @@ body {
   background: #C4B8A2;
 }
 
-/* Print styles for QR tent cards */
+/* Print styles for QR tent cards and Thermal POS Receipt */
 @media print {
-  body {
+  @page {
+    size: auto;
+    margin: 5mm;
+  }
+  html, body {
     background: white !important;
     color: black !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
   .no-print {
     display: none !important;
   }
   .print-only {
     display: block !important;
+  }
+
+  /* When printing directly from main window with thermal receipt open */
+  body:has(#printable-thermal-receipt) {
+    overflow: visible !important;
+  }
+  body:has(#printable-thermal-receipt) * {
+    visibility: hidden;
+  }
+  body:has(#printable-thermal-receipt) #printable-thermal-receipt,
+  body:has(#printable-thermal-receipt) #printable-thermal-receipt * {
+    visibility: visible !important;
+  }
+  body:has(#printable-thermal-receipt) #printable-thermal-receipt {
+    position: absolute !important;
+    top: 0 !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 80mm !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 4mm 6mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  body:has(#printable-thermal-receipt) .fixed {
+    position: static !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    max-height: none !important;
   }
 }
 

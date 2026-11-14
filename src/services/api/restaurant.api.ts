@@ -1,13 +1,17 @@
 import { apiRequest } from "./client";
+import { RestaurantPaymentConfig } from "@/types/payment-config.types";
 
 export interface RestaurantOrder {
   id: string;
   order_number: string;
   order_status: "PENDING" | "ACCEPTED" | "PREPARING" | "READY" | "COMPLETED" | "CANCELLED" | "REJECTED";
   payment_status: "UNPAID" | "PAID" | "REFUNDED";
+  payment_mode?: string;
   total_paise: number;
   subtotal_paise: number;
   tax_paise: number;
+  additional_charges_paise?: number;
+  charges_snapshot?: any[];
   customer_name?: string;
   customer_phone?: string;
   special_notes?: string;
@@ -113,11 +117,12 @@ export const restaurantApi = {
   updatePaymentStatus: (
     restaurantId: string,
     orderId: string,
-    payment_status: RestaurantOrder["payment_status"]
+    payment_status: RestaurantOrder["payment_status"],
+    payment_mode?: string
   ) =>
     apiRequest<RestaurantOrder>(`/api/restaurant/${restaurantId}/orders/${orderId}/payment`, {
       method: "PATCH",
-      body: JSON.stringify({ payment_status }),
+      body: JSON.stringify({ payment_status, payment_mode }),
     }),
 
   createStaffOrder: (
@@ -301,6 +306,28 @@ export const restaurantApi = {
       gstPercentage: number;
       gstNumber: string | null;
     }>(`/api/restaurant/${restaurantId}/tax-config`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  // Payment Configuration
+  getPaymentConfig: (restaurantId: string) =>
+    apiRequest<RestaurantPaymentConfig>(`/api/restaurant/${restaurantId}/payment-config`),
+
+  updatePaymentConfig: (
+    restaurantId: string,
+    payload: Partial<{
+      acceptCounter: boolean;
+      acceptRazorpay: boolean;
+      acceptUpi: boolean;
+      payPolicy: "PAY_FIRST" | "PAY_LATER";
+      razorpayKeyId?: string | null;
+      razorpayKeySecret?: string | null;
+      upiId?: string | null;
+      upiName?: string | null;
+    }>
+  ) =>
+    apiRequest<RestaurantPaymentConfig>(`/api/restaurant/${restaurantId}/payment-config`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),

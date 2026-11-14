@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog } from "@/components/ui/dialog";
 import { formatPaiseToINR } from "@/lib/utils/currency";
+import { PaymentConfigurationCard } from "@/components/settings/payment-configuration-card";
 
 export default function RestaurantSettingsPage() {
   const queryClient = useQueryClient();
@@ -303,6 +304,9 @@ export default function RestaurantSettingsPage() {
           </Button>
         </div>
       </form>
+
+      {/* Payment Configuration (Counter, Razorpay, UPI & Pay First/Later) */}
+      <PaymentConfigurationCard restaurantId={activeRestaurantId} />
 
       {/* Taxes (GST) Configuration Section */}
       <GstTaxConfigurationSection restaurantId={activeRestaurantId} />

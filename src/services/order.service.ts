@@ -52,6 +52,10 @@ export async function createCustomerOrder(input: CreateOrderInput) {
     tableId,
     orderType: "DINE_IN",
     orderSource: "CUSTOMER",
+    customerName: input.customerName || null,
+    customerPhone: input.customerPhone || null,
+    paymentMode: input.paymentMode || "COUNTER",
+    paymentStatus: input.paymentStatus || (input.paymentMode === "RAZORPAY" || input.paymentMode === "UPI" ? "PAID" : "UNPAID"),
     idempotencyKey: input.idempotencyKey,
     requestHash,
     guestTrackingToken,
@@ -119,6 +123,8 @@ export async function createStaffOrder(
     createdByUserId: staffUserId,
     customerName: input.customerName || null,
     customerPhone: input.customerPhone || null,
+    paymentMode: (input as any).paymentMode || "COUNTER",
+    paymentStatus: (input as any).paymentStatus || "UNPAID",
     idempotencyKey,
     requestHash,
     guestTrackingToken,
@@ -138,6 +144,8 @@ async function executeOrderCreationPipeline({
   createdByUserId = null,
   customerName = null,
   customerPhone = null,
+  paymentMode = "COUNTER",
+  paymentStatus = "UNPAID",
   idempotencyKey,
   requestHash,
   guestTrackingToken,
@@ -151,6 +159,8 @@ async function executeOrderCreationPipeline({
   createdByUserId?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
+  paymentMode?: string | null;
+  paymentStatus?: PaymentStatus | null;
   idempotencyKey: string;
   requestHash: string;
   guestTrackingToken: string;
@@ -304,7 +314,8 @@ async function executeOrderCreationPipeline({
     table_id: tableId,
     order_number: orderNumber,
     order_status: "PENDING",
-    payment_status: "UNPAID",
+    payment_status: paymentStatus || (paymentMode === "RAZORPAY" || paymentMode === "UPI" ? "PAID" : "UNPAID"),
+    payment_mode: paymentMode || "COUNTER",
     order_type: orderType,
     order_source: orderSource,
     created_by_user_id: createdByUserId,
@@ -319,11 +330,23 @@ async function executeOrderCreationPipeline({
     special_instructions: specialInstructions || null,
   };
 
-  const { data: order, error: orderError } = await adminClient
+  let { data: order, error: orderError } = await adminClient
     .from("orders")
     .insert(insertPayload as any)
     .select()
     .single();
+
+  // Graceful fallback if payment_mode column not yet migrated
+  if (orderError && orderError.message.includes("payment_mode")) {
+    delete insertPayload.payment_mode;
+    const retry = await adminClient
+      .from("orders")
+      .insert(insertPayload as any)
+      .select()
+      .single();
+    order = retry.data;
+    orderError = retry.error;
+  }
 
   if (orderError || !order) {
     throw new BadRequestError(`Failed to create order: ${orderError?.message}`);
@@ -436,10 +459,20 @@ export function normalizeOrderForDisplay(order: Record<string, unknown>) {
   const specialNotes =
     order.special_instructions ?? order.special_notes ?? null;
 
+  const restRaw = order.restaurants || order.restaurant;
+  const restObj = Array.isArray(restRaw) ? restRaw[0] : restRaw;
+  const brandingRaw = (restObj as any)?.restaurant_branding;
+  const brandingObj = Array.isArray(brandingRaw) ? brandingRaw[0] : brandingRaw;
+  const restaurantName = (restObj as any)?.name || (order.restaurant as any)?.name || "Restaurant";
+  const restaurantPhone = brandingObj?.support_phone || (restObj as any)?.phone || (order.restaurant as any)?.phone || null;
+  const restaurantAddress = brandingObj?.tagline || (restObj as any)?.address || null;
+  const restaurantGst = (restObj as any)?.gst_number || (order.restaurant as any)?.gstNumber || null;
+
   return {
     ...order,
     order_type: order.order_type || "DINE_IN",
     order_source: order.order_source || "CUSTOMER",
+    payment_mode: order.payment_mode || "COUNTER",
     items,
     order_items: items,
     table: {
@@ -449,6 +482,14 @@ export function normalizeOrderForDisplay(order: Record<string, unknown>) {
     },
     restaurant_tables: {
       table_number: tableNumber,
+    },
+    restaurant: {
+      id: (restObj as any)?.id,
+      name: restaurantName,
+      phone: restaurantPhone,
+      address: restaurantAddress,
+      gstNumber: restaurantGst,
+      ordering_mode: (restObj as any)?.ordering_mode || (order.restaurant as any)?.ordering_mode || "STAFF_SERVED",
     },
     special_notes: specialNotes,
     special_instructions: specialNotes,
@@ -517,7 +558,8 @@ export async function getGuestOrderByToken(trackingToken: string) {
         id,
         name,
         currency,
-        restaurant_branding (logo_url, primary_color)
+        gst_number,
+        restaurant_branding (logo_url, primary_color, support_phone, tagline)
       ),
       restaurant_tables!orders_table_id_fkey (
         table_number
@@ -697,20 +739,39 @@ export async function transitionOrderStatus(
 export async function updatePaymentStatus(
   restaurantId: string,
   orderId: string,
-  paymentStatus: PaymentStatus
+  paymentStatus: PaymentStatus,
+  paymentMode?: string
 ) {
   const adminClient = createAdminClient();
 
-  const { data, error } = await adminClient
+  const updateData: Record<string, any> = {
+    payment_status: paymentStatus,
+    updated_at: new Date().toISOString(),
+  };
+  if (paymentMode) {
+    updateData.payment_mode = paymentMode;
+  }
+
+  let { data, error } = await adminClient
     .from("orders")
-    .update({
-      payment_status: paymentStatus,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData as any)
     .eq("id", orderId)
     .eq("restaurant_id", restaurantId)
     .select()
     .single();
+
+  if (error && error.message.includes("payment_mode")) {
+    delete updateData.payment_mode;
+    const retry = await adminClient
+      .from("orders")
+      .update(updateData as any)
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error || !data) {
     throw new NotFoundError("Order not found or update failed");
