@@ -148,4 +148,13 @@ export const adminApi = {
       billing_period: string;
       features: string[];
     }>>("/api/admin/plans"),
+
+  getPaymentConfig: (restaurantId: string) =>
+    apiRequest<any>(`/api/restaurant/${restaurantId}/payment-config`),
+
+  updatePaymentConfig: (restaurantId: string, payload: any) =>
+    apiRequest<any>(`/api/restaurant/${restaurantId}/payment-config`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
 };

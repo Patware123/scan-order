@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import { CreateOrderInput } from "@/lib/validations/order.schema";
+import { PublicPaymentConfig } from "@/types/payment-config.types";
 
 export interface PublicMenuCategory {
   id: string;
@@ -80,6 +81,7 @@ export interface PublicMenuResponse {
     gstPercentage: number;
     gstNumber?: string | null;
   };
+  paymentConfig?: PublicPaymentConfig;
 }
 
 export interface PublicOrderStatusResponse {
@@ -87,9 +89,12 @@ export interface PublicOrderStatusResponse {
   order_number: string;
   order_status: "PENDING" | "ACCEPTED" | "PREPARING" | "READY" | "COMPLETED" | "CANCELLED" | "REJECTED";
   payment_status: "UNPAID" | "PAID" | "REFUNDED";
+  payment_mode?: string;
   total_paise: number;
   subtotal_paise: number;
   tax_paise: number;
+  additional_charges_paise?: number;
+  charges_snapshot?: any[];
   customer_name?: string;
   customer_phone?: string;
   special_notes?: string;
@@ -97,7 +102,9 @@ export interface PublicOrderStatusResponse {
   restaurant: {
     id: string;
     name: string;
-    phone?: string;
+    phone?: string | null;
+    address?: string | null;
+    gstNumber?: string | null;
     ordering_mode: "SELF_SERVICE" | "STAFF_SERVED";
   };
   table: {

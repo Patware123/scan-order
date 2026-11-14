@@ -3,6 +3,7 @@ import { resolveTableFromToken } from "@/lib/auth/rbac";
 import { getCategories, getMenuItems } from "@/services/menu.service";
 import { getRestaurantById } from "@/services/restaurant.service";
 import { getRestaurantCharges, getRestaurantTaxConfig } from "@/services/charges.service";
+import { getPublicPaymentConfig } from "@/services/payment-config.service";
 import { successResponse } from "@/lib/utils/api-response";
 import { handleApiError } from "@/lib/utils/errors";
 
@@ -14,12 +15,13 @@ export async function GET(
     const { tableToken } = await params;
     const tableInfo = await resolveTableFromToken(tableToken);
 
-    const [restaurant, categories, items, charges, taxConfig] = await Promise.all([
+    const [restaurant, categories, items, charges, taxConfig, paymentConfig] = await Promise.all([
       getRestaurantById(tableInfo.restaurantId),
       getCategories(tableInfo.restaurantId, false),
       getMenuItems(tableInfo.restaurantId, { isAvailable: true }),
       getRestaurantCharges(tableInfo.restaurantId, { activeOnly: true, appliesTo: "DINE_IN" }),
       getRestaurantTaxConfig(tableInfo.restaurantId),
+      getPublicPaymentConfig(tableInfo.restaurantId),
     ]);
 
     // Non-tax additional charges (GST is provided in taxConfig)
@@ -45,6 +47,7 @@ export async function GET(
       items,
       charges: nonTaxCharges,
       taxConfig,
+      paymentConfig,
     });
   } catch (error) {
     return handleApiError(error);

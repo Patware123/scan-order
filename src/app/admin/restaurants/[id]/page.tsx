@@ -35,6 +35,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PaymentConfigurationCard } from "@/components/settings/payment-configuration-card";
 
 export default function RestaurantDetailsPageWrapper() {
   return (
@@ -56,7 +57,7 @@ function RestaurantDetailsContent() {
   const queryClient = useQueryClient();
   const restaurantId = params?.id as string;
 
-  const [activeTab, setActiveTab] = React.useState<"info" | "staff" | "subscription">("info");
+  const [activeTab, setActiveTab] = React.useState<"info" | "staff" | "payment" | "subscription">("info");
 
   // Edit Restaurant Details Form State
   const [name, setName] = React.useState("");
@@ -354,6 +355,17 @@ function RestaurantDetailsContent() {
         </button>
 
         <button
+          onClick={() => setActiveTab("payment")}
+          className={`pb-3 text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+            activeTab === "payment"
+              ? "border-[#783F24] text-[#783F24]"
+              : "border-transparent text-[#78716C] hover:text-[#29241F]"
+          }`}
+        >
+          Payment Configuration
+        </button>
+
+        <button
           onClick={() => setActiveTab("subscription")}
           className={`pb-3 text-sm font-bold border-b-2 transition-colors cursor-pointer ${
             activeTab === "subscription"
@@ -579,7 +591,14 @@ function RestaurantDetailsContent() {
         </div>
       )}
 
-      {/* TAB 3: SUBSCRIPTION & TABLE LIMITS */}
+      {/* TAB 3: PAYMENT CONFIGURATION */}
+      {activeTab === "payment" && (
+        <div className="pt-1">
+          <PaymentConfigurationCard restaurantId={restaurantId} isSuperAdminView={true} />
+        </div>
+      )}
+
+      {/* TAB 4: SUBSCRIPTION & TABLE LIMITS */}
       {activeTab === "subscription" && (
         <div className="space-y-6">
           {/* Table Limit Card */}

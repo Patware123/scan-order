@@ -26,6 +26,10 @@ export const createOrderSchema = z.preprocess((val: any) => {
       tableToken: val.tableToken ?? val.table_token,
       idempotencyKey: val.idempotencyKey ?? val.idempotency_key,
       specialInstructions: val.specialInstructions ?? val.special_instructions,
+      customerName: val.customerName ?? val.customer_name,
+      customerPhone: val.customerPhone ?? val.customer_phone,
+      paymentMode: val.paymentMode ?? val.payment_mode,
+      paymentStatus: val.paymentStatus ?? val.payment_status,
     };
   }
   return val;
@@ -41,6 +45,10 @@ export const createOrderSchema = z.preprocess((val: any) => {
     .max(500, "Special instructions cannot exceed 500 characters")
     .optional()
     .nullable(),
+  customerName: z.string().max(100).optional().nullable(),
+  customerPhone: z.string().max(30).optional().nullable(),
+  paymentMode: z.string().max(50).optional().nullable(),
+  paymentStatus: z.enum(["UNPAID", "PAID", "REFUNDED"]).optional().nullable(),
 }));
 
 export const createStaffOrderSchema = z.preprocess((val: any) => {
@@ -87,11 +95,13 @@ export const updatePaymentStatusSchema = z.preprocess((val: any) => {
     return {
       ...val,
       paymentStatus: val.paymentStatus ?? val.payment_status,
+      paymentMode: val.paymentMode ?? val.payment_mode,
     };
   }
   return val;
 }, z.object({
   paymentStatus: z.enum(["UNPAID", "PAID", "REFUNDED"]),
+  paymentMode: z.string().max(50).optional().nullable(),
 }));
 
 export const orderQuerySchema = z.preprocess((val: any) => {
